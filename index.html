@@ -137,9 +137,6 @@
     let ballVX = BALL_SPEED_X;
     let ballVY = -BALL_SPEED_Y;
 
-    // Flag set when the ball falls past the bottom edge
-    let ballLost = false;
-
     // Paddle — centred horizontally
     let paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
 
@@ -151,13 +148,7 @@
     let gameState = 'start';
 
     // Bricks — 2-D array [row][col], value: true = alive, false = destroyed
-    const bricks = [];
-    for (let r = 0; r < BRICK_ROWS; r++) {
-        bricks[r] = [];
-        for (let c = 0; c < BRICK_COLS; c++) {
-            bricks[r][c] = true;
-        }
-    }
+    const bricks = GameCore.buildBricks(BRICK_ROWS, BRICK_COLS);
 
     // ============================================================
     // INPUT — keyboard, mouse and touch move the paddle
@@ -252,7 +243,6 @@
         ballY  = 420;
         ballVX = BALL_SPEED_X;
         ballVY = -BALL_SPEED_Y;
-        ballLost = false;
     }
 
     // Full game reset — called on restart after game over
@@ -261,12 +251,9 @@
         score = 0;
         resetBall();
         paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
-        // Rebuild all bricks
-        for (let r = 0; r < BRICK_ROWS; r++) {
-            for (let c = 0; c < BRICK_COLS; c++) {
-                bricks[r][c] = true;
-            }
-        }
+        // Rebuild all bricks using GameCore helper
+        const freshBricks = GameCore.buildBricks(BRICK_ROWS, BRICK_COLS);
+        for (let r = 0; r < BRICK_ROWS; r++) bricks[r] = freshBricks[r];
         gameState = 'playing';
         updateHUD();
     }
@@ -278,16 +265,16 @@
         // Freeze the game when not in 'playing' state
         if (gameState !== 'playing') return;
 
-        // Scale velocity by deltaTime to be frame-rate independent.
-        // Base frame duration = 1000/60 ≈ 16.667 ms.
+        // Scale factor: normalise deltaTime to a 60 fps baseline (16.667 ms/frame).
+        // Used consistently for both ball movement and paddle movement.
         const dt = deltaTime / (1000 / 60);
 
         // --- Keyboard paddle movement ---
         if (keys[KEY_LEFT] || keys['arrowleft']) {
-            paddleX -= PADDLE_SPEED * (deltaTime / 16.667);
+            paddleX -= PADDLE_SPEED * dt;
         }
         if (keys[KEY_RIGHT] || keys['arrowright']) {
-            paddleX += PADDLE_SPEED * (deltaTime / 16.667);
+            paddleX += PADDLE_SPEED * dt;
         }
         // Clamp paddle within canvas bounds (applied here, not in event handlers)
         paddleX = Math.max(0, Math.min(CANVAS_WIDTH - PADDLE_WIDTH, paddleX));
@@ -301,7 +288,6 @@
         ballX = wallResult.x; ballY = wallResult.y;
         ballVX = wallResult.vx; ballVY = wallResult.vy;
         if (wallResult.lost) {
-            ballLost = true;
             lives -= 1;
             updateHUD();
             if (lives === 0) {

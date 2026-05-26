@@ -83,7 +83,6 @@ describe('checkVictory', () => {
 // ---------------------------------------------------------------------------
 describe('computeWallCollisions', () => {
   test('ball exits left wall: vx is inverted and x is corrected', () => {
-    // Ball just past the left edge, moving left
     const r = GameCore.computeWallCollisions(-2, 300, -3, 2, BALL_R, CANVAS_W, CANVAS_H);
     expect(r.vx).toBeGreaterThan(0);
     expect(r.x).toBe(BALL_R);
@@ -119,9 +118,8 @@ describe('computeWallCollisions', () => {
   });
 
   test('ball touching left wall but moving right (vx > 0): no bounce occurs', () => {
-    // The ball is on the left wall but already heading away — should NOT invert vx
     const r = GameCore.computeWallCollisions(BALL_R - 1, 300, 3, 2, BALL_R, CANVAS_W, CANVAS_H);
-    expect(r.vx).toBe(3); // direction unchanged
+    expect(r.vx).toBe(3);
   });
 
   test('ball touching right wall but moving left (vx < 0): no bounce occurs', () => {
@@ -139,11 +137,10 @@ describe('computeWallCollisions', () => {
 // computePaddleBounce
 // ---------------------------------------------------------------------------
 describe('computePaddleBounce', () => {
-  // Helper: ball centred on paddle, moving downward
   function paddleHit(ballX, paddleX = 350) {
     return GameCore.computePaddleBounce(
-      ballX, PAD_Y,          // ball y exactly at paddle top
-      2, 3,                  // ballVX, ballVY (moving down)
+      ballX, PAD_Y,
+      2, 3,
       BALL_R,
       paddleX, PAD_Y, PAD_W, PAD_H,
       MAX_ANGLE, SPEED_MAG
@@ -151,18 +148,17 @@ describe('computePaddleBounce', () => {
   }
 
   test('hit at centre: vx is approximately 0 (quasi-vertical)', () => {
-    // Centre hit: paddleX + paddleWidth/2
-    const r = paddleHit(350 + 50); // centre of paddle at x=350
+    const r = paddleHit(350 + 50);
     expect(Math.abs(r.vx)).toBeLessThan(0.1);
   });
 
   test('hit at left edge: ball departs to the left (vx < 0)', () => {
-    const r = paddleHit(350); // left edge of paddle
+    const r = paddleHit(350);
     expect(r.vx).toBeLessThan(0);
   });
 
   test('hit at right edge: ball departs to the right (vx > 0)', () => {
-    const r = paddleHit(350 + 100); // right edge of paddle
+    const r = paddleHit(350 + 100);
     expect(r.vx).toBeGreaterThan(0);
   });
 
@@ -194,7 +190,6 @@ describe('computePaddleBounce', () => {
   });
 
   test('ball is outside the paddle x-range: no bounce', () => {
-    // Ball far to the right of the paddle
     const r = GameCore.computePaddleBounce(
       700, PAD_Y, 2, 3, BALL_R,
       350, PAD_Y, PAD_W, PAD_H,
@@ -205,7 +200,6 @@ describe('computePaddleBounce', () => {
   });
 
   test('ball is above the paddle (no vertical overlap): no bounce', () => {
-    // Ball well above the paddle surface
     const r = GameCore.computePaddleBounce(
       400, PAD_Y - 50, 2, 3, BALL_R,
       350, PAD_Y, PAD_W, PAD_H,
@@ -220,7 +214,6 @@ describe('computePaddleBounce', () => {
 // computeBrickCollision
 // ---------------------------------------------------------------------------
 describe('computeBrickCollision', () => {
-  // Returns coordinates of a brick's centre given its row/col
   function brickCentre(r, c) {
     const bx = B_OFFSET_X + c * (B_W + B_GAP);
     const by = B_OFFSET_Y + r * (B_H + B_GAP);
@@ -243,32 +236,27 @@ describe('computeBrickCollision', () => {
   });
 
   test('ball approaching from above: vy is inverted', () => {
-    // Place ball just above the first brick (row=0, col=0)
     const { cx, by } = brickCentre(0, 0);
-    const ballY = by - BALL_R + 2; // slightly overlapping top edge
+    const ballY = by - BALL_R + 2;
     const bricks = GameCore.buildBricks(5, 10);
-
     const r = GameCore.computeBrickCollision(
       cx, ballY, 0, 3, BALL_R, bricks, B_OFFSET_X, B_OFFSET_Y, B_W, B_H, B_GAP
     );
     expect(r).not.toBeNull();
-    expect(r.vy).toBeLessThan(0); // reflected upward
+    expect(r.vy).toBeLessThan(0);
     expect(r.hitRow).toBe(0);
     expect(r.hitCol).toBe(0);
   });
 
   test('ball approaching from the side: vx is inverted', () => {
-    // Place ball just to the right of brick (row=0, col=0), moving left
     const { bx, cy } = brickCentre(0, 0);
-    const brickRight = bx + B_W;
-    const ballX = brickRight + BALL_R - 2; // slightly overlapping right edge
+    const ballX = bx + B_W + BALL_R - 2;
     const bricks = GameCore.buildBricks(5, 10);
-
     const r = GameCore.computeBrickCollision(
       ballX, cy, -4, 0, BALL_R, bricks, B_OFFSET_X, B_OFFSET_Y, B_W, B_H, B_GAP
     );
     expect(r).not.toBeNull();
-    expect(r.vx).toBeGreaterThan(0); // reflected to the right
+    expect(r.vx).toBeGreaterThan(0);
     expect(r.hitRow).toBe(0);
     expect(r.hitCol).toBe(0);
   });
@@ -277,12 +265,9 @@ describe('computeBrickCollision', () => {
     const { cx, by } = brickCentre(0, 0);
     const ballY = by - BALL_R + 2;
     const bricks = GameCore.buildBricks(5, 10);
-
     GameCore.computeBrickCollision(
       cx, ballY, 0, 3, BALL_R, bricks, B_OFFSET_X, B_OFFSET_Y, B_W, B_H, B_GAP
     );
-
-    // The brick that was hit must still be true
     expect(bricks[0][0]).toBe(true);
   });
 
@@ -295,13 +280,11 @@ describe('computeBrickCollision', () => {
   });
 
   test('returns hitRow and hitCol identifying the correct brick', () => {
-    // Target brick at row=2, col=5.
-    // Place ball center at by+5: deep enough inside row=2 to avoid overlapping
-    // the brick above (row=1 bottom = by - GAP = by-4, ball top = by+5-8 = by-3 > by-4).
+    // Ball center at by+5: inside row=2 without overlapping row=1 above
+    // (row=1 bottom = by-4, ball top = by+5-8 = by-3 > by-4)
     const { cx, by } = brickCentre(2, 5);
     const ballY = by + 5;
     const bricks = GameCore.buildBricks(5, 10);
-
     const r = GameCore.computeBrickCollision(
       cx, ballY, 0, 3, BALL_R, bricks, B_OFFSET_X, B_OFFSET_Y, B_W, B_H, B_GAP
     );
@@ -311,16 +294,10 @@ describe('computeBrickCollision', () => {
   });
 
   test('returns null when the only brick in range is already destroyed', () => {
-    const { cx, by } = brickCentre(0, 0);
-    const ballY = by - BALL_R + 2;
-    const bricks = GameCore.buildBricks(5, 10);
-    bricks[0][0] = false; // destroy the target brick
-
-    // Ball is aimed exactly at destroyed brick — others are far away
-    // Use a sparse 1-row/1-col grid to simplify
     const singleBrick = [[false]];
+    const { cx, by } = brickCentre(0, 0);
     const r = GameCore.computeBrickCollision(
-      cx, ballY, 0, 3, BALL_R, singleBrick, B_OFFSET_X, B_OFFSET_Y, B_W, B_H, B_GAP
+      cx, by - BALL_R + 2, 0, 3, BALL_R, singleBrick, B_OFFSET_X, B_OFFSET_Y, B_W, B_H, B_GAP
     );
     expect(r).toBeNull();
   });
@@ -348,13 +325,6 @@ describe('computeRowPoints', () => {
 
   test('returns 10 for row 4 (bottom row, lowest value)', () => {
     expect(GameCore.computeRowPoints(4, ROW_PTS)).toBe(10);
-  });
-
-  test('works with a custom points array', () => {
-    expect(GameCore.computeRowPoints(2, [100, 75, 50, 25])).toBe(50);
-  });
-});
-(4, ROW_PTS)).toBe(10);
   });
 
   test('works with a custom points array', () => {
