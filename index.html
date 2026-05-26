@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Breakout</title>
+    <style>
+        /* --- Layout --- */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* no scrollbars on desktop 1920×1080 */
+            background-color: #0d0d1a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #gameWrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #gameHUD {
+            width: 100%;          /* same width as canvas */
+            max-width: 800px;
+            display: flex;
+            justify-content: space-between;  /* score left, lives right */
+            align-items: center;
+            padding: 0 4px;
+            color: #fff;
+            font-family: monospace;
+            font-size: 18px;
+            user-select: none;
+        }
+
+        #livesDisplay {
+            letter-spacing: 4px;
+        }
+
+        #scoreDisplay {
+            font-family: monospace;
+            font-size: 18px;
+            color: #fff;
+            letter-spacing: 1px;
+        }
+
+        #gameCanvas {
+            display: block;
+            /* CSS-only scaling on mobile: keeps internal coords at 800×600 */
+            max-width: 100%;
+            aspect-ratio: 4 / 3;
+            image-rendering: pixelated;
+            border: 2px solid #333a4a;
+            box-shadow: 0 0 24px rgba(80, 120, 220, 0.25), 0 0 2px #222;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameWrapper">
+      <div id="gameHUD">
+        <span id="scoreDisplay">0</span>
+        <span id="livesDisplay"></span>
+      </div>
+      <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <script src="game-core.js"></script>
+    <script>
+    // ============================================================
+    // CONSTANTS — all magic numbers live here, nowhere else
+    // ============================================================
+    const CANVAS_WIDTH   = 800;
+    const CANVAS_HEIGHT  = 600;
+
+    const BALL_RADIUS    = 8;
+    const BALL_SPEED_X   = 4;   // initial horizontal speed (px / frame at 60 fps)
+    const BALL_SPEED_Y   = 4;   // initial vertical   speed (px / frame at 60 fps)
+    // Magnitude used to renormalise velocity after a paddle hit
+    const BALL_SPEED_MAG = Math.sqrt(BALL_SPEED_X ** 2 + BALL_SPEED_Y ** 2);
+
+    const PADDLE_WIDTH   = 100;
+    const PADDLE_HEIGHT  = 12;
+    const PADDLE_Y       = 560; // 40 px above bottom
+
+    // Maximum horizontal component after a paddle bounce (pixels / frame)
+    const MAX_BOUNCE_ANGLE = 5;
+
+    // Keyboard controls (AZERTY French layout primary, arrow keys as fallback)
+    const KEY_LEFT  = 'q';
+    const KEY_RIGHT = 'd';
+    const PADDLE_SPEED = 6; // pixels per frame at 60 fps
+
+    const BRICK_ROWS     = 5;
+    const BRICK_COLS     = 10;
+    const BRICK_WIDTH    = 70;
+    const BRICK_HEIGHT   = 20;
+    const BRICK_GAP      = 4;   // horizontal AND vertical gap between bricks
+    const BRICK_OFFSET_Y = 60;  // y of the first brick row
+
+    // Verify the grid fits horizontally:
+    // 10 * 70 + 9 * 4 = 700 + 36 = 736 px — leaves (800-736)/2 = 32 px each side
+    const BRICK_OFFSET_X = (CANVAS_WIDTH - (BRICK_COLS * BRICK_WIDTH + (BRICK_COLS - 1) * BRICK_GAP)) / 2; // = 32
+
+    // One colour per row (top → bottom)
+    const ROW_COLORS = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#3498db'];
+
+    const ROW_POINTS = [50, 40, 30, 20, 10]; // top row = most points
+
+    // Lives
+    const MAX_LIVES = 3;
+
+    // ============================================================
+    // CANVAS SETUP
+    // ============================================================
+    const canvas  = document.getElementById('gameCanvas');
+    canvas.width  = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
+    const ctx     = canvas.getContext('2d');
+
+    // ============================================================
+    // GAME STATE
+    // ============================================================
+
+    // Ball
+    let ballX  = CANVAS_WIDTH / 2;
+    let ballY  = 420; // initial position above paddle
+    let ballVX = BALL_SPEED_X;
+    let ballVY = -BALL_SPEED_Y;
+
+    // Flag set when the ball falls past the bottom edge
+    let ballLost = false;
+
+    // Paddle — centred horizontally
+    let paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
+
+    // Lives & score
+    let lives = MAX_LIVES;
+    let score = 0;
+
+    // Game state machine: 'playing' | 'gameover' | 'victory' (US-07) | 'start' (US-08)
+    let gameState = 'start';
+
+    // Bricks — 2-D array [row][col], value: true = alive, false = destroyed
+    const bricks = [];
+    for (let r = 0; r < BRICK_ROWS; r++) {
+        bricks[r] = [];
+        for (let c = 0; c < BRICK_COLS; c++) {
+            bricks[r][c] = true;
+        }
+    }
+
+    // ============================================================
+    // INPUT — keyboard, mouse and touch move the paddle
+    // ============================================================
+
+    // --- Keyboard: track pressed keys so movement is continuous while held ---
+    const keys = {};
+
+    window.addEventListener('keydown', (e) => {
+        keys[e.key.toLowerCase()] = true;
+        // Start the game on any key (except F1-F12 and dead keys) from the start screen
+        if (gameState === 'start' && !e.key.startsWith('F') && e.key !== 'Dead') {
+            gameState = 'playing';
+            return;
+        }
+        // Restart the game on Space when game over
+        if (e.key === ' ' && (gameState === 'gameover' || gameState === 'victory')) {
+            resetGame();
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        keys[e.key.toLowerCase()] = false;
+    });
+
+    // --- Mouse click: start game from start screen ---
+    canvas.addEventListener('mousedown', () => {
+        if (gameState === 'start') {
+            gameState = 'playing';
+        }
+    });
+
+    // --- Mouse: centre paddle on cursor position ---
+    canvas.addEventListener('mousemove', (e) => {
+        const rect  = canvas.getBoundingClientRect();
+        // Account for CSS scaling: map client coords back to canvas coords
+        const scaleX = CANVAS_WIDTH / rect.width;
+        const clientX = (e.clientX - rect.left) * scaleX;
+        paddleX = clientX - PADDLE_WIDTH / 2;
+        // Clamp paddle inside canvas
+        paddleX = Math.max(0, Math.min(CANVAS_WIDTH - PADDLE_WIDTH, paddleX));
+    });
+
+    // --- Touch: drag paddle relative to initial touch position ---
+    let touchStartX  = 0;
+    let paddleStartX = 0;
+
+    canvas.addEventListener('touchstart', (e) => {
+        // Start game on touch from start screen
+        if (gameState === 'start') {
+            gameState = 'playing';
+            return;
+        }
+        // Restart on touch when game is over
+        if (gameState === 'gameover' || gameState === 'victory') {
+            resetGame();
+            return;
+        }
+        const touch  = e.touches[0];
+        touchStartX  = touch.clientX;
+        paddleStartX = paddleX;
+    });
+
+    canvas.addEventListener('touchmove', (e) => {
+        // preventDefault stops the page from scrolling while playing
+        e.preventDefault();
+        const touch = e.touches[0];
+        paddleX = paddleStartX + (touch.clientX - touchStartX);
+        paddleX = Math.max(0, Math.min(CANVAS_WIDTH - PADDLE_WIDTH, paddleX));
+    }, { passive: false }); // { passive: false } is required for preventDefault to work
+
+    canvas.addEventListener('touchend', () => {
+        touchStartX  = 0;
+        paddleStartX = 0;
+    });
+
+    // ============================================================
+    // HELPERS
+    // ============================================================
+
+    // ============================================================
+    // HUD — DOM-based display (lives)
+    // ============================================================
+    function updateHUD() {
+        document.getElementById('livesDisplay').textContent = '●'.repeat(lives);
+        document.getElementById('scoreDisplay').textContent = score;
+    }
+
+    // Reset ball to starting position
+    function resetBall() {
+        ballX  = CANVAS_WIDTH / 2;
+        ballY  = 420;
+        ballVX = BALL_SPEED_X;
+        ballVY = -BALL_SPEED_Y;
+        ballLost = false;
+    }
+
+    // Full game reset — called on restart after game over
+    function resetGame() {
+        lives = MAX_LIVES;
+        score = 0;
+        resetBall();
+        paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
+        // Rebuild all bricks
+        for (let r = 0; r < BRICK_ROWS; r++) {
+            for (let c = 0; c < BRICK_COLS; c++) {
+                bricks[r][c] = true;
+            }
+        }
+        gameState = 'playing';
+        updateHUD();
+    }
+
+    // ============================================================
+    // UPDATE — all game logic; no drawing here
+    // ============================================================
+    function update(deltaTime) {
+        // Freeze the game when not in 'playing' state
+        if (gameState !== 'playing') return;
+
+        // Scale velocity by deltaTime to be frame-rate independent.
+        // Base frame duration = 1000/60 ≈ 16.667 ms.
+        const dt = deltaTime / (1000 / 60);
+
+        // --- Keyboard paddle movement ---
+        if (keys[KEY_LEFT] || keys['arrowleft']) {
+            paddleX -= PADDLE_SPEED * (deltaTime / 16.667);
+        }
+        if (keys[KEY_RIGHT] || keys['arrowright']) {
+            paddleX += PADDLE_SPEED * (deltaTime / 16.667);
+        }
+        // Clamp paddle within canvas bounds (applied here, not in event handlers)
+        paddleX = Math.max(0, Math.min(CANVAS_WIDTH - PADDLE_WIDTH, paddleX));
+
+        // --- Move ball ---
+        ballX += ballVX * dt;
+        ballY += ballVY * dt;
+
+        // --- Wall collisions (delegated to GameCore) ---
+        const wallResult = GameCore.computeWallCollisions(ballX, ballY, ballVX, ballVY, BALL_RADIUS, CANVAS_WIDTH, CANVAS_HEIGHT);
+        ballX = wallResult.x; ballY = wallResult.y;
+        ballVX = wallResult.vx; ballVY = wallResult.vy;
+        if (wallResult.lost) {
+            ballLost = true;
+            lives -= 1;
+            updateHUD();
+            if (lives === 0) {
+                // No lives remaining — go to game over
+                gameState = 'gameover';
+                ballLost = false;
+            } else {
+                // Still have lives — reset ball and paddle, continue
+                resetBall();
+                paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
+            }
+            return; // skip remaining collision checks this frame
+        }
+
+        // --- Paddle collision (delegated to GameCore) ---
+        // NOTE on tunneling: AABB detection is sufficient at current speeds
+        // (BALL_SPEED_MAG ≈ 5.66 px/frame vs BRICK_HEIGHT 20 px, BALL_RADIUS*2 16 px).
+        // If speed ever exceeds min(BRICK_HEIGHT, BALL_RADIUS * 2) = 16 px/frame,
+        // replace this with a raycast / swept-AABB approach to prevent tunneling.
+        const paddleResult = GameCore.computePaddleBounce(ballX, ballY, ballVX, ballVY, BALL_RADIUS, paddleX, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT, MAX_BOUNCE_ANGLE, BALL_SPEED_MAG);
+        ballVX = paddleResult.vx; ballVY = paddleResult.vy; ballY = paddleResult.y;
+
+        // --- Brick collisions (delegated to GameCore) ---
+        // At most one brick collision is processed per frame.
+        const brickResult = GameCore.computeBrickCollision(ballX, ballY, ballVX, ballVY, BALL_RADIUS, bricks, BRICK_OFFSET_X, BRICK_OFFSET_Y, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP);
+        if (brickResult !== null) {
+            bricks[brickResult.hitRow][brickResult.hitCol] = false;
+            ballVX = brickResult.vx; ballVY = brickResult.vy;
+            ballX = brickResult.x; ballY = brickResult.y;
+            score += ROW_POINTS[brickResult.hitRow];
+            updateHUD();
+            if (GameCore.checkVictory(bricks)) gameState = 'victory';
+        }
+    }
+
+    // ============================================================
+    // DRAW — pure rendering; no game-state mutations
+    // ============================================================
+    function draw() {
+        // Clear canvas each frame
+        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        // Canvas background
+        ctx.fillStyle = '#0d0d1a';
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        // --- Draw bricks ---
+        for (let r = 0; r < BRICK_ROWS; r++) {
+            ctx.fillStyle = ROW_COLORS[r];
+            for (let c = 0; c < BRICK_COLS; c++) {
+                if (!bricks[r][c]) continue;
+
+                const brickX = BRICK_OFFSET_X + c * (BRICK_WIDTH  + BRICK_GAP);
+                const brickY = BRICK_OFFSET_Y + r * (BRICK_HEIGHT + BRICK_GAP);
+
+                ctx.fillRect(brickX, brickY, BRICK_WIDTH, BRICK_HEIGHT);
+            }
+        }
+
+        // --- Draw paddle ---
+        ctx.fillStyle = '#ecf0f1';
+        ctx.fillRect(paddleX, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT);
+
+        // --- Draw ball ---
+        ctx.beginPath();
+        ctx.arc(ballX, ballY, BALL_RADIUS, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.closePath();
+
+        // --- Start screen overlay ---
+        if (gameState === 'start') {
+            // Semi-transparent dark veil over the game background
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // Vertical layout anchored to canvas centre
+            const cx = CANVAS_WIDTH  / 2;
+            const cy = CANVAS_HEIGHT / 2;
+
+            // Title
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 52px monospace';
+            ctx.fillText('BREAKOUT', cx, cy - 90);
+
+            // Subtitle
+            ctx.fillStyle = '#aaaaaa';
+            ctx.font = '20px monospace';
+            ctx.fillText('Casse toutes les briques !', cx, cy - 48);
+
+            // Controls section
+            ctx.fillStyle = '#cccccc';
+            ctx.font = '18px monospace';
+            ctx.fillText('Clavier : Q / D  ou  ← →', cx, cy + 8);
+            ctx.fillText('Souris : déplace la raquette', cx, cy + 36);
+            ctx.fillText('Mobile : glisser', cx, cy + 64);
+
+            // Start instruction
+            ctx.fillStyle = '#f1c40f';
+            ctx.font = '18px monospace';
+            ctx.fillText('Appuie sur ESPACE ou clique pour commencer', cx, cy + 112);
+
+            // Reset alignment to defaults
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'alphabetic';
+        }
+
+        // --- Game Over overlay ---
+        if (gameState === 'gameover') {
+            // Semi-transparent black veil
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // "GAME OVER" title
+            ctx.fillStyle = '#e74c3c';
+            ctx.font = 'bold 48px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 60);
+
+            // Score line
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '28px monospace';
+            ctx.fillText(`Score : ${score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+
+            // Replay instruction
+            ctx.fillStyle = '#aaaaaa';
+            ctx.font = '18px monospace';
+            ctx.fillText('Appuie sur ESPACE pour rejouer', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 50);
+
+            // Reset alignment to defaults
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'alphabetic';
+        } else if (gameState === 'victory') {
+            // Semi-transparent green overlay
+            ctx.fillStyle = 'rgba(0, 40, 0, 0.7)';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            ctx.fillStyle = '#2ecc71';
+            ctx.font = 'bold 48px monospace';
+            ctx.fillText('YOU WIN !', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 50);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '28px monospace';
+            ctx.fillText(`Score : ${score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
+
+            ctx.fillStyle = '#aaaaaa';
+            ctx.font = '18px monospace';
+            ctx.fillText('Appuie sur ESPACE pour rejouer', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 55);
+
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'alphabetic';
+        }
+    }
+
+    // ============================================================
+    // GAME LOOP — requestAnimationFrame only; no setInterval/setTimeout
+    // ============================================================
+    let lastTime = 0;
+
+    function gameLoop(timestamp) {
+        // Cap deltaTime to 50 ms to avoid large jumps after tab-switch / lag spike
+        const deltaTime = Math.min(timestamp - lastTime, 50);
+        lastTime = timestamp;
+
+        update(deltaTime);
+        draw();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    // Initialise HUD before first frame
+    updateHUD();
+
+    // Kick off the loop
+    requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
