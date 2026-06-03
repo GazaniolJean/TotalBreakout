@@ -201,7 +201,7 @@ Contraintes : solo dev · pas de backend · mobile-friendly · 60 FPS cible
 - AC-03 — La direction de la balle est conservée lors de l'application de l'effet (seule la magnitude change).
 - AC-04 — À expiration, `speedMag` revient exactement à sa valeur de base (pas de dérive cumulative entre plusieurs collectes successives).
 - AC-05 — L'effet s'applique immédiatement à la prochaine frame, pas au prochain rebond.
-- AC-06 — Si une balle rapide est déjà active et qu'une nouvelle capsule Rapide est collectée, la durée est remise à `SPEED_DURATION` sans doublement de vitesse.
+- AC-06 — Si un effet vitesse est déjà actif et qu'une nouvelle capsule du même type est collectée, `SPEED_DURATION` ms est **ajouté** au temps restant (pas de reset), plafonné à `SPEED_DURATION * 3` ms. La vitesse n'est pas re-multipliée. *(CR-01 : stacking de durée)*
 - AC-07 — Le test unitaire `computeSpeedEffect(baseSpeed, multiplier)` vérifie que la magnitude résultante est `baseSpeed × multiplier` à ±0.001.
 
 ### Hors scope
@@ -227,7 +227,7 @@ Contraintes : solo dev · pas de backend · mobile-friendly · 60 FPS cible
 - AC-03 — La raquette est recentrée sur sa position X courante lors du changement de taille (elle ne sort pas du canvas).
 - AC-04 — Si la raquette élargie atteint un bord canvas, elle est clampée sans dépasser.
 - AC-05 — À expiration, `paddleWidth` revient exactement à `PADDLE_WIDTH` de base.
-- AC-06 — Collecter une capsule Large alors qu'une Large est active remet la durée à zéro sans nouveau changement de taille.
+- AC-06 — Collecter une capsule du même type qu'un effet déjà actif **ajoute** `PADDLE_SIZE_DURATION` ms au temps restant, plafonné à `PADDLE_SIZE_DURATION * 3` ms. La taille n'est pas re-multipliée. *(CR-01 : stacking de durée)*
 - AC-07 — Collecter une capsule Petite pendant une Large active (ou vice-versa) annule l'effet précédent et applique le nouveau immédiatement.
 - AC-08 — Le calcul de l'angle de rebond (`computePaddleBounce`) utilise la `paddleWidth` courante (pas la largeur de base).
 

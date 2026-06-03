@@ -28,6 +28,11 @@ const SPEED_MAG  = Math.sqrt(4 * 4 + 4 * 4); // ~ 5.656
 // Power-up defaults (mirror index.html constants)
 const POWERUP_SIZE = 20;
 
+// Speed power-up constants (mirror index.html — US-10)
+const BALL_SPEED_MAG = Math.sqrt(4 * 4 + 4 * 4); // ~ 5.656
+const SPEED_FAST_MULT = 1.6;
+const SPEED_SLOW_MULT = 0.55;
+
 // ---------------------------------------------------------------------------
 // buildBricks
 // ---------------------------------------------------------------------------
@@ -380,4 +385,46 @@ describe('checkPowerUpCollection - US-09', () => {
     const capsule = { x: 400, y: PAD_Y, type: 'test', color: '#FFFFFF', label: 'T' };
     expect(GameCore.checkPowerUpCollection(capsule, 350, PAD_Y, PAD_W, PAD_H)).toBe(true);
   });
+});
+
+// ---------------------------------------------------------------------------
+// computeSpeedEffect - US-10
+// ---------------------------------------------------------------------------
+describe('computeSpeedEffect - US-10', () => {
+  test('fast multiplier (1.6) scales BALL_SPEED_MAG correctly within 0.001', () => {
+    const result = GameCore.computeSpeedEffect(BALL_SPEED_MAG, SPEED_FAST_MULT);
+    expect(result).toBeCloseTo(BALL_SPEED_MAG * 1.6, 3);
+  });
+
+  test('slow multiplier (0.55) scales BALL_SPEED_MAG correctly within 0.001', () => {
+    const result = GameCore.computeSpeedEffect(BALL_SPEED_MAG, SPEED_SLOW_MULT);
+    expect(result).toBeCloseTo(BALL_SPEED_MAG * 0.55, 3);
+  });
+
+  test('multiplier 1.0 returns exactly baseSpeed (used at effect expiration)', () => {
+    expect(GameCore.computeSpeedEffect(BALL_SPEED_MAG, 1.0)).toBe(BALL_SPEED_MAG);
+  });
+
+  test('multiplier 1.0 returns exactly baseSpeed for arbitrary positive input', () => {
+    expect(GameCore.computeSpeedEffect(12.345, 1.0)).toBe(12.345);
+  });
+
+  test('result is strictly positive for positive baseSpeed and positive multiplier', () => {
+    expect(GameCore.computeSpeedEffect(BALL_SPEED_MAG, SPEED_FAST_MULT)).toBeGreaterThan(0);
+    expect(GameCore.computeSpeedEffect(BALL_SPEED_MAG, SPEED_SLOW_MULT)).toBeGreaterThan(0);
+    expect(GameCore.computeSpeedEffect(0.0001, 0.55)).toBeGreaterThan(0);
+  });
+
+  test('fast effect produces a value strictly greater than baseSpeed', () => {
+    expect(GameCore.computeSpeedEffect(BALL_SPEED_MAG, SPEED_FAST_MULT))
+      .toBeGreaterThan(BALL_SPEED_MAG);
+  });
+
+  test('slow effect produces a value strictly lower than baseSpeed', () => {
+    expect(GameCore.computeSpeedEffect(BALL_SPEED_MAG, SPEED_SLOW_MULT))
+      .toBeLessThan(BALL_SPEED_MAG);
+  });
+
+  // CR-01: duration stacking logic for same-type power-up collection is in
+  // activateEffect() in index.html — tested manually (DOM/game loop dependency).
 });
