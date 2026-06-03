@@ -182,6 +182,37 @@
     return rowPoints[rowIndex];
   }
 
+  /**
+   * checkPowerUpCollection(capsule, paddleX, paddleY, paddleWidth, paddleHeight)
+   * Pure AABB overlap test between a falling power-up capsule and the paddle.
+   * The capsule is expected to expose { x, y } as its top-left corner, plus a
+   * `size` field; if `size` is absent we fall back to a default of 20 (matches
+   * POWERUP_SIZE in index.html). This keeps the helper self-contained for
+   * testing while staying compatible with the live capsule objects.
+   * Returns true when the two rectangles overlap, false otherwise.
+   */
+  function checkPowerUpCollection(capsule, paddleX, paddleY, paddleWidth, paddleHeight) {
+    const size = (capsule && typeof capsule.size === 'number') ? capsule.size : 20;
+    const capsuleLeft   = capsule.x;
+    const capsuleRight  = capsule.x + size;
+    const capsuleTop    = capsule.y;
+    const capsuleBottom = capsule.y + size;
+
+    const paddleLeft   = paddleX;
+    const paddleRight  = paddleX + paddleWidth;
+    const paddleTop    = paddleY;
+    const paddleBottom = paddleY + paddleHeight;
+
+    // Standard AABB overlap test — strict inequality so that a 0-area touch
+    // (edges flush, no real overlap) does not count as a collection.
+    return (
+      capsuleRight  > paddleLeft  &&
+      capsuleLeft   < paddleRight &&
+      capsuleBottom > paddleTop   &&
+      capsuleTop    < paddleBottom
+    );
+  }
+
   // Export all public functions
   exports.buildBricks            = buildBricks;
   exports.checkVictory           = checkVictory;
@@ -189,5 +220,6 @@
   exports.computePaddleBounce    = computePaddleBounce;
   exports.computeBrickCollision  = computeBrickCollision;
   exports.computeRowPoints       = computeRowPoints;
+  exports.checkPowerUpCollection = checkPowerUpCollection;
 
 })(typeof module !== 'undefined' ? module.exports : (window.GameCore = {}));

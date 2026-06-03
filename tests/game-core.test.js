@@ -23,7 +23,10 @@ const PAD_W      = 100;
 const PAD_H      = 12;
 const PAD_Y      = 560;
 const MAX_ANGLE  = 5;
-const SPEED_MAG  = Math.sqrt(4 * 4 + 4 * 4); // ≈ 5.656
+const SPEED_MAG  = Math.sqrt(4 * 4 + 4 * 4); // ~ 5.656
+
+// Power-up defaults (mirror index.html constants)
+const POWERUP_SIZE = 20;
 
 // ---------------------------------------------------------------------------
 // buildBricks
@@ -329,5 +332,52 @@ describe('computeRowPoints', () => {
 
   test('works with a custom points array', () => {
     expect(GameCore.computeRowPoints(2, [100, 75, 50, 25])).toBe(50);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// checkPowerUpCollection - US-09
+// ---------------------------------------------------------------------------
+describe('checkPowerUpCollection - US-09', () => {
+  // Reusable factory: capsule with top-left at (x, y) and default POWERUP_SIZE.
+  function makeCapsule(x, y, size = POWERUP_SIZE) {
+    return { x, y, type: 'test', color: '#FFFFFF', label: 'T', size };
+  }
+
+  test('capsule fully inside the paddle horizontal range and touching its top: returns true', () => {
+    // Paddle at (350, 560), 100x12. Capsule sitting just on top, fully overlapping.
+    const capsule = makeCapsule(400, PAD_Y); // top-left inside paddle, y == paddleTop
+    expect(GameCore.checkPowerUpCollection(capsule, 350, PAD_Y, PAD_W, PAD_H)).toBe(true);
+  });
+
+  test('capsule partially overlapping the paddle (right edge): returns true', () => {
+    // Capsule extends 5 px past the paddle's left edge from the outside.
+    // Paddle left = 350, capsule right = 350 + 5 -> 5 px of horizontal overlap.
+    const capsule = makeCapsule(350 - POWERUP_SIZE + 5, PAD_Y + 2);
+    expect(GameCore.checkPowerUpCollection(capsule, 350, PAD_Y, PAD_W, PAD_H)).toBe(true);
+  });
+
+  test('capsule clearly above the paddle (no vertical overlap): returns false', () => {
+    // Capsule sits 50 px above the paddle - no overlap at all.
+    const capsule = makeCapsule(400, PAD_Y - POWERUP_SIZE - 50);
+    expect(GameCore.checkPowerUpCollection(capsule, 350, PAD_Y, PAD_W, PAD_H)).toBe(false);
+  });
+
+  test('capsule next to the paddle horizontally (no horizontal overlap): returns false', () => {
+    // Capsule at x = 470 (past paddle right edge 350+100=450), same vertical row.
+    const capsule = makeCapsule(470, PAD_Y + 2);
+    expect(GameCore.checkPowerUpCollection(capsule, 350, PAD_Y, PAD_W, PAD_H)).toBe(false);
+  });
+
+  test('capsule edges flush with paddle edges (touching, no real overlap): returns false', () => {
+    // Capsule right edge exactly equals paddle left edge: no positive-area overlap.
+    const capsule = makeCapsule(350 - POWERUP_SIZE, PAD_Y + 2);
+    expect(GameCore.checkPowerUpCollection(capsule, 350, PAD_Y, PAD_W, PAD_H)).toBe(false);
+  });
+
+  test('falls back to default size 20 when capsule.size is missing', () => {
+    // Capsule object lacking the size field still uses a sensible 20 px square.
+    const capsule = { x: 400, y: PAD_Y, type: 'test', color: '#FFFFFF', label: 'T' };
+    expect(GameCore.checkPowerUpCollection(capsule, 350, PAD_Y, PAD_W, PAD_H)).toBe(true);
   });
 });

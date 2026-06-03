@@ -15,7 +15,7 @@
         html, body {
             width: 100%;
             height: 100%;
-            overflow: hidden; /* no scrollbars on desktop 1920×1080 */
+            overflow: hidden; /* no scrollbars on desktop 1920x1080 */
             background-color: #0d0d1a;
             display: flex;
             align-items: center;
@@ -55,7 +55,7 @@
 
         #gameCanvas {
             display: block;
-            /* CSS-only scaling on mobile: keeps internal coords at 800×600 */
+            /* CSS-only scaling on mobile: keeps internal coords at 800x600 */
             max-width: 100%;
             aspect-ratio: 4 / 3;
             image-rendering: pixelated;
@@ -77,7 +77,7 @@
     <script src="game-core.js"></script>
     <script>
     // ============================================================
-    // CONSTANTS — all magic numbers live here, nowhere else
+    // CONSTANTS - all magic numbers live here, nowhere else
     // ============================================================
     const CANVAS_WIDTH   = 800;
     const CANVAS_HEIGHT  = 600;
@@ -108,16 +108,36 @@
     const BRICK_OFFSET_Y = 60;  // y of the first brick row
 
     // Verify the grid fits horizontally:
-    // 10 * 70 + 9 * 4 = 700 + 36 = 736 px — leaves (800-736)/2 = 32 px each side
+    // 10 * 70 + 9 * 4 = 700 + 36 = 736 px - leaves (800-736)/2 = 32 px each side
     const BRICK_OFFSET_X = (CANVAS_WIDTH - (BRICK_COLS * BRICK_WIDTH + (BRICK_COLS - 1) * BRICK_GAP)) / 2; // = 32
 
-    // One colour per row (top → bottom)
+    // One colour per row (top -> bottom)
     const ROW_COLORS = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#3498db'];
 
     const ROW_POINTS = [50, 40, 30, 20, 10]; // top row = most points
 
     // Lives
     const MAX_LIVES = 3;
+
+    // ---- Power-ups (US-09 infrastructure) ----
+    // Probability that a destroyed brick spawns a capsule.
+    const POWERUP_DROP_CHANCE = 0.20;
+    // Vertical fall speed of capsules (px / frame at 60 fps), independent of ball speed.
+    const POWERUP_FALL_SPEED  = 3;
+    // Capsule square side length, used for both AABB collision and rendering.
+    const POWERUP_SIZE        = 20;
+    // Per-type colour palette (extended in US-10..US-16). Placeholder 'test' here.
+    const POWERUP_COLORS = {
+        test: '#FFFFFF'
+    };
+    // Per-type short label drawn inside the capsule.
+    const POWERUP_LABELS = {
+        test: 'T'
+    };
+    // Per-type effect duration in milliseconds (real types arrive in later US).
+    const POWERUP_DURATIONS = {
+        test: 5000
+    };
 
     // ============================================================
     // CANVAS SETUP
@@ -137,7 +157,7 @@
     let ballVX = BALL_SPEED_X;
     let ballVY = -BALL_SPEED_Y;
 
-    // Paddle — centred horizontally
+    // Paddle - centred horizontally
     let paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
 
     // Lives & score
@@ -147,11 +167,19 @@
     // Game state machine: 'playing' | 'gameover' | 'victory' (US-07) | 'start' (US-08)
     let gameState = 'start';
 
-    // Bricks — 2-D array [row][col], value: true = alive, false = destroyed
+    // Bricks - 2-D array [row][col], value: true = alive, false = destroyed
     const bricks = GameCore.buildBricks(BRICK_ROWS, BRICK_COLS);
 
+    // Power-up state (US-09)
+    // activePowerUps: capsules currently falling toward the paddle.
+    // Each entry: { x, y, type, color, label, size }
+    let activePowerUps = [];
+    // activeEffects: timed effects currently in play, keyed by power-up type.
+    // Each entry: { remainingMs, totalMs }
+    let activeEffects = {};
+
     // ============================================================
-    // INPUT — keyboard, mouse and touch move the paddle
+    // INPUT - keyboard, mouse and touch move the paddle
     // ============================================================
 
     // --- Keyboard: track pressed keys so movement is continuous while held ---
@@ -230,7 +258,7 @@
     // ============================================================
 
     // ============================================================
-    // HUD — DOM-based display (lives)
+    // HUD - DOM-based display (lives)
     // ============================================================
     function updateHUD() {
         document.getElementById('livesDisplay').textContent = '●'.repeat(lives);
@@ -245,7 +273,30 @@
         ballVY = -BALL_SPEED_Y;
     }
 
-    // Full game reset — called on restart after game over
+    // Spawn a falling capsule centred on a destroyed brick.
+    // Uses brick grid coordinates (row, col) to compute world-space origin.
+    function spawnPowerUp(row, col, type) {
+        const brickX = BRICK_OFFSET_X + col * (BRICK_WIDTH  + BRICK_GAP);
+        const brickY = BRICK_OFFSET_Y + row * (BRICK_HEIGHT + BRICK_GAP);
+        const capsuleX = brickX + (BRICK_WIDTH  - POWERUP_SIZE) / 2;
+        const capsuleY = brickY + (BRICK_HEIGHT - POWERUP_SIZE) / 2;
+        activePowerUps.push({
+            x: capsuleX,
+            y: capsuleY,
+            type: type,
+            color: POWERUP_COLORS[type],
+            label: POWERUP_LABELS[type],
+            size: POWERUP_SIZE
+        });
+    }
+
+    // Activate (or refresh) a timed effect for a given power-up type.
+    function activateEffect(type) {
+        const duration = POWERUP_DURATIONS[type];
+        activeEffects[type] = { remainingMs: duration, totalMs: duration };
+    }
+
+    // Full game reset - called on restart after game over
     function resetGame() {
         lives = MAX_LIVES;
         score = 0;
@@ -254,12 +305,15 @@
         // Rebuild all bricks using GameCore helper
         const freshBricks = GameCore.buildBricks(BRICK_ROWS, BRICK_COLS);
         for (let r = 0; r < BRICK_ROWS; r++) bricks[r] = freshBricks[r];
+        // Clear in-flight power-ups and cancel any active effects (AC-09)
+        activePowerUps = [];
+        activeEffects  = {};
         gameState = 'playing';
         updateHUD();
     }
 
     // ============================================================
-    // UPDATE — all game logic; no drawing here
+    // UPDATE - all game logic; no drawing here
     // ============================================================
     function update(deltaTime) {
         // Freeze the game when not in 'playing' state
@@ -291,11 +345,13 @@
             lives -= 1;
             updateHUD();
             if (lives === 0) {
-                // No lives remaining — go to game over
+                // No lives remaining - go to game over
                 gameState = 'gameover';
-                ballLost = false;
+                // Clear in-flight power-ups and cancel any active effects (AC-09)
+                activePowerUps = [];
+                activeEffects  = {};
             } else {
-                // Still have lives — reset ball and paddle, continue
+                // Still have lives - reset ball and paddle, continue
                 resetBall();
                 paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
             }
@@ -304,7 +360,7 @@
 
         // --- Paddle collision (delegated to GameCore) ---
         // NOTE on tunneling: AABB detection is sufficient at current speeds
-        // (BALL_SPEED_MAG ≈ 5.66 px/frame vs BRICK_HEIGHT 20 px, BALL_RADIUS*2 16 px).
+        // (BALL_SPEED_MAG ~ 5.66 px/frame vs BRICK_HEIGHT 20 px, BALL_RADIUS*2 16 px).
         // If speed ever exceeds min(BRICK_HEIGHT, BALL_RADIUS * 2) = 16 px/frame,
         // replace this with a raycast / swept-AABB approach to prevent tunneling.
         const paddleResult = GameCore.computePaddleBounce(ballX, ballY, ballVX, ballVY, BALL_RADIUS, paddleX, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT, MAX_BOUNCE_ANGLE, BALL_SPEED_MAG);
@@ -319,12 +375,48 @@
             ballX = brickResult.x; ballY = brickResult.y;
             score += ROW_POINTS[brickResult.hitRow];
             updateHUD();
+
+            // --- Power-up drop roll (AC-01) ---
+            // On every brick destruction, roll for a capsule drop. For US-09 the
+            // only available type is the placeholder 'test' - real types come in
+            // US-10..US-16 and will be selected here by weighted random.
+            if (Math.random() < POWERUP_DROP_CHANCE) {
+                spawnPowerUp(brickResult.hitRow, brickResult.hitCol, 'test');
+            }
+
             if (GameCore.checkVictory(bricks)) gameState = 'victory';
+        }
+
+        // --- Power-up capsules: fall, collect, despawn (AC-02..AC-04, AC-07) ---
+        // Iterate backwards so splice() during the loop is safe.
+        for (let i = activePowerUps.length - 1; i >= 0; i--) {
+            const capsule = activePowerUps[i];
+            capsule.y += POWERUP_FALL_SPEED * dt;
+
+            // Collection by paddle - delegated to pure GameCore function (AC-08)
+            if (GameCore.checkPowerUpCollection(capsule, paddleX, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT)) {
+                activateEffect(capsule.type);
+                activePowerUps.splice(i, 1);
+                continue;
+            }
+
+            // Silent despawn when the capsule leaves the bottom of the canvas (AC-04)
+            if (capsule.y > CANVAS_HEIGHT) {
+                activePowerUps.splice(i, 1);
+            }
+        }
+
+        // --- Timed effects: decrement and expire (AC-06) ---
+        for (const type of Object.keys(activeEffects)) {
+            activeEffects[type].remainingMs -= deltaTime;
+            if (activeEffects[type].remainingMs <= 0) {
+                delete activeEffects[type];
+            }
         }
     }
 
     // ============================================================
-    // DRAW — pure rendering; no game-state mutations
+    // DRAW - pure rendering; no game-state mutations
     // ============================================================
     function draw() {
         // Clear canvas each frame
@@ -358,6 +450,40 @@
         ctx.fill();
         ctx.closePath();
 
+        // --- Draw power-up capsules (AC-05, AC-07) ---
+        // Coloured square + centred single-letter label. Colours come from
+        // POWERUP_COLORS so each type stays visually distinct on the dark bg.
+        for (const capsule of activePowerUps) {
+            ctx.fillStyle = capsule.color;
+            ctx.fillRect(capsule.x, capsule.y, capsule.size, capsule.size);
+
+            ctx.fillStyle = '#000000';
+            ctx.font = 'bold 14px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(capsule.label, capsule.x + capsule.size / 2, capsule.y + capsule.size / 2);
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'alphabetic';
+        }
+
+        // --- Draw active effect indicators in the in-canvas HUD (AC-06) ---
+        // One small label per active effect, stacked at the bottom of the canvas.
+        const activeEffectKeys = Object.keys(activeEffects);
+        if (activeEffectKeys.length > 0) {
+            ctx.font = '14px monospace';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'alphabetic';
+            const lineHeight = 18;
+            const baseY = CANVAS_HEIGHT - 8 - (activeEffectKeys.length - 1) * lineHeight;
+            for (let i = 0; i < activeEffectKeys.length; i++) {
+                const type = activeEffectKeys[i];
+                const effect = activeEffects[type];
+                const secondsLeft = Math.ceil(effect.remainingMs / 1000);
+                ctx.fillStyle = POWERUP_COLORS[type] || '#ffffff';
+                ctx.fillText(type.toUpperCase() + ' ' + secondsLeft + 's', 8, baseY + i * lineHeight);
+            }
+        }
+
         // --- Start screen overlay ---
         if (gameState === 'start') {
             // Semi-transparent dark veil over the game background
@@ -385,7 +511,7 @@
             ctx.fillStyle = '#cccccc';
             ctx.font = '18px monospace';
             ctx.fillText('Clavier : Q / D  ou  ← →', cx, cy + 8);
-            ctx.fillText('Souris : déplace la raquette', cx, cy + 36);
+            ctx.fillText('Souris : deplace la raquette', cx, cy + 36);
             ctx.fillText('Mobile : glisser', cx, cy + 64);
 
             // Start instruction
@@ -414,7 +540,7 @@
             // Score line
             ctx.fillStyle = '#ffffff';
             ctx.font = '28px monospace';
-            ctx.fillText(`Score : ${score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+            ctx.fillText('Score : ' + score, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
 
             // Replay instruction
             ctx.fillStyle = '#aaaaaa';
@@ -438,7 +564,7 @@
 
             ctx.fillStyle = '#ffffff';
             ctx.font = '28px monospace';
-            ctx.fillText(`Score : ${score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
+            ctx.fillText('Score : ' + score, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
 
             ctx.fillStyle = '#aaaaaa';
             ctx.font = '18px monospace';
@@ -450,7 +576,7 @@
     }
 
     // ============================================================
-    // GAME LOOP — requestAnimationFrame only; no setInterval/setTimeout
+    // GAME LOOP - requestAnimationFrame only; no setInterval/setTimeout
     // ============================================================
     let lastTime = 0;
 
