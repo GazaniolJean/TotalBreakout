@@ -328,7 +328,10 @@
     // HUD - DOM-based display (lives)
     // ============================================================
     function updateHUD() {
-        document.getElementById('livesDisplay').textContent = '●'.repeat(lives);
+        // Show up to 3 dots; if lives > 3 append a numeric count
+        const dots = '●'.repeat(Math.min(lives, 3));
+        const extra = lives > 3 ? ' +' + (lives - 3) : '';
+        document.getElementById('livesDisplay').textContent = dots + extra;
         document.getElementById('scoreDisplay').textContent = score;
     }
 
@@ -363,6 +366,13 @@
     // does NOT re-apply the magnitude (no speed compounding). On first
     // collection, the effect starts fresh and the magnitude is applied.
     function activateEffect(type) {
+        // Extra life is instant and permanent — handle before any timed-effect logic
+        if (type === 'extralife') {
+            lives += 1; // no cap — AC updated by PO
+            updateHUD();
+            return;
+        }
+
         const duration    = POWERUP_DURATIONS[type];
         const maxDuration = duration * 3; // CR-01 cap
 
@@ -416,13 +426,6 @@
             stickyActive = true; // arm the sticky — will trigger on next paddle contact
         }
 
-        // Extra-life power-up (US-15): instant, permanent, no timed effect.
-        else if (type === 'extralife') {
-            // AC-02: cap at MAX_LIVES — no effect if already at max
-            lives = Math.min(lives + 1, MAX_LIVES);
-            updateHUD(); // AC-03: immediate HUD update
-            // AC-04: no activeEffects entry, no duration — instant and permanent
-        }
     }
 
     // Renormalise the ball velocity vector to the requested magnitude while
@@ -805,31 +808,4 @@
             ctx.fillText('Appuie sur ESPACE pour rejouer', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 55);
 
             ctx.textAlign = 'left';
-            ctx.textBaseline = 'alphabetic';
-        }
-    }
-
-    // ============================================================
-    // MAIN LOOP - update then draw, driven by requestAnimationFrame
-    // ============================================================
-    let lastTime = 0;
-
-    function gameLoop(timestamp) {
-        // First frame: seed lastTime so the initial deltaTime is ~0, not the
-        // full page-load timestamp (which would teleport the ball).
-        if (!lastTime) lastTime = timestamp;
-        const deltaTime = timestamp - lastTime;
-        lastTime = timestamp;
-
-        update(deltaTime);
-        draw();
-
-        requestAnimationFrame(gameLoop);
-    }
-
-    // Initialise HUD and start the loop.
-    updateHUD();
-    requestAnimationFrame(gameLoop);
-    </script>
-</body>
-</html>
+       
