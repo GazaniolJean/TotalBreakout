@@ -366,10 +366,16 @@
     // does NOT re-apply the magnitude (no speed compounding). On first
     // collection, the effect starts fresh and the magnitude is applied.
     function activateEffect(type) {
-        // Extra life is instant and permanent — handle before any timed-effect logic
+        // Instant / single-use effects — handle before any timed-effect logic
+        // (these types have no entry in POWERUP_DURATIONS; skipping early would
+        //  produce duration=undefined → NaN in activeEffects).
         if (type === 'extralife') {
             lives += 1; // no cap — AC updated by PO
             updateHUD();
+            return;
+        }
+        if (type === 'sticky') {
+            stickyActive = true; // arm the sticky — triggers on next paddle contact
             return;
         }
 
@@ -420,11 +426,7 @@
             paddleX = Math.max(0, Math.min(CANVAS_WIDTH - currentPaddleWidth, paddleX));
         }
 
-        // Sticky power-up (US-14): single-use, not timed. Does NOT go through the
-        // activeEffects system — just arm a flag that catches the next bounce.
-        else if (type === 'sticky') {
-            stickyActive = true; // arm the sticky — will trigger on next paddle contact
-        }
+        // Sticky (US-14) and extralife (US-15) are handled by early return above.
 
     }
 
@@ -808,4 +810,31 @@
             ctx.fillText('Appuie sur ESPACE pour rejouer', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 55);
 
             ctx.textAlign = 'left';
-       
+            ctx.textBaseline = 'alphabetic';
+        }
+    }
+
+    // ============================================================
+    // GAME LOOP - requestAnimationFrame only; no setInterval/setTimeout
+    // ============================================================
+    let lastTime = 0;
+
+    function gameLoop(timestamp) {
+        // Cap deltaTime to 50 ms to avoid large jumps after tab-switch / lag spike
+        const deltaTime = Math.min(timestamp - lastTime, 50);
+        lastTime = timestamp;
+
+        update(deltaTime);
+        draw();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    // Initialise HUD before first frame
+    updateHUD();
+
+    // Kick off the loop
+    requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
