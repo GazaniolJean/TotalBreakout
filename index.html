@@ -135,29 +135,43 @@
     // Shared duration in ms for both fast and slow capsules (AC-01, AC-02).
     const SPEED_DURATION   = 8000;
 
+    // ---- Paddle size power-ups (US-11) ----
+    // Width multipliers applied to the base PADDLE_WIDTH while the effect is
+    // active. PADDLE_WIDTH itself is never mutated (AC-05).
+    const PADDLE_WIDE_MULT       = 1.7;
+    const PADDLE_SMALL_MULT      = 0.5;
+    // Shared duration in ms for both wide and small capsules (AC-01, AC-02).
+    const PADDLE_SIZE_DURATION   = 10000; // ms
+
     // Per-type colour palette (extended in US-10..US-16). Placeholder 'test' here.
     const POWERUP_COLORS = {
         test: '#FFFFFF',
         fast: '#FF6B35',
-        slow: '#74B9FF'
+        slow: '#74B9FF',
+        wide: '#00B894',
+        small: '#E17055'
     };
     // Per-type short label drawn inside the capsule.
     const POWERUP_LABELS = {
         test: 'T',
         fast: '▲',
-        slow: '▼'
+        slow: '▼',
+        wide: '◀▶',
+        small: '▶◀'
     };
     // Per-type effect duration in milliseconds (real types arrive in later US).
     const POWERUP_DURATIONS = {
         test: 5000,
         fast: SPEED_DURATION,
-        slow: SPEED_DURATION
+        slow: SPEED_DURATION,
+        wide: PADDLE_SIZE_DURATION,
+        small: PADDLE_SIZE_DURATION
     };
 
     // Real power-up types available in the random drop pool (US-10).
     // 'test' is intentionally kept out of the pool: it was a US-09 placeholder
     // and remains supported in POWERUP_COLORS/LABELS/DURATIONS only for tooling.
-    const POWERUP_TYPES = ['fast', 'slow'];
+    const POWERUP_TYPES = ['fast', 'slow', 'wide', 'small'];
 
     // ============================================================
     // CANVAS SETUP
@@ -183,6 +197,9 @@
 
     // Paddle - centred horizontally
     let paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
+    // Current paddle width — driven by US-11 size power-ups. Defaults to
+    // PADDLE_WIDTH and is restored to that value at effect expiration (AC-05).
+    let currentPaddleWidth = PADDLE_WIDTH;
 
     // Lives & score
     let lives = MAX_LIVES;
@@ -239,9 +256,9 @@
         // Account for CSS scaling: map client coords back to canvas coords
         const scaleX = CANVAS_WIDTH / rect.width;
         const clientX = (e.clientX - rect.left) * scaleX;
-        paddleX = clientX - PADDLE_WIDTH / 2;
+        paddleX = clientX - currentPaddleWidth / 2;
         // Clamp paddle inside canvas
-        paddleX = Math.max(0, Math.min(CANVAS_WIDTH - PADDLE_WIDTH, paddleX));
+        paddleX = Math.max(0, Math.min(CANVAS_WIDTH - currentPaddleWidth, paddleX));
     });
 
     // --- Touch: drag paddle relative to initial touch position ---
@@ -269,7 +286,7 @@
         e.preventDefault();
         const touch = e.touches[0];
         paddleX = paddleStartX + (touch.clientX - touchStartX);
-        paddleX = Math.max(0, Math.min(CANVAS_WIDTH - PADDLE_WIDTH, paddleX));
+        paddleX = Math.max(0, Math.min(CANVAS_WIDTH - currentPaddleWidth, paddleX));
     }, { passive: false }); // { passive: false } is required for preventDefault to work
 
     canvas.addEventListener('touchend', () => {
@@ -323,6 +340,17 @@
         const duration    = POWERUP_DURATIONS[type];
         const maxDuration = duration * 3; // CR-01 cap
 
+        // AC-07: opposite paddle-size effect cancels the current one. The size
+        // is reset to PADDLE_WIDTH here so the new multiplier (applied below on
+        // first collection) starts from the base width, not a stacked one.
+        if (type === 'wide' && activeEffects['small']) {
+            delete activeEffects['small'];
+            currentPaddleWidth = PADDLE_WIDTH;
+        } else if (type === 'small' && activeEffects['wide']) {
+            delete activeEffects['wide'];
+            currentPaddleWidth = PADDLE_WIDTH;
+        }
+
         if (activeEffects[type]) {
             // Stack: extend remaining time, cap at 3x, do NOT re-apply magnitude.
             activeEffects[type].remainingMs = Math.min(
@@ -344,6 +372,17 @@
             currentSpeedMag = GameCore.computeSpeedEffect(BALL_SPEED_MAG, multiplier);
             applyBallSpeedMagnitude(currentSpeedMag);
         }
+
+        // Paddle size power-ups (US-11): apply width change on first activation
+        // only. PADDLE_WIDTH is never mutated (AC-05).
+        else if (type === 'wide' || type === 'small') {
+            const mult = (type === 'wide') ? PADDLE_WIDE_MULT : PADDLE_SMALL_MULT;
+            currentPaddleWidth = PADDLE_WIDTH * mult;
+            // AC-03: recentre the paddle on its current position, clamp in canvas
+            paddleX = paddleX + (PADDLE_WIDTH - currentPaddleWidth) / 2;
+            // AC-04: never let the resized paddle leave the canvas
+            paddleX = Math.max(0, Math.min(CANVAS_WIDTH - currentPaddleWidth, paddleX));
+        }
     }
 
     // Renormalise the ball velocity vector to the requested magnitude while
@@ -361,6 +400,7 @@
         lives = MAX_LIVES;
         score = 0;
         resetBall();
+        currentPaddleWidth = PADDLE_WIDTH;
         paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
         // Rebuild all bricks using GameCore helper
         const freshBricks = GameCore.buildBricks(BRICK_ROWS, BRICK_COLS);
@@ -393,7 +433,7 @@
             paddleX += PADDLE_SPEED * dt;
         }
         // Clamp paddle within canvas bounds (applied here, not in event handlers)
-        paddleX = Math.max(0, Math.min(CANVAS_WIDTH - PADDLE_WIDTH, paddleX));
+        paddleX = Math.max(0, Math.min(CANVAS_WIDTH - currentPaddleWidth, paddleX));
 
         // --- Move ball ---
         ballX += ballVX * dt;
@@ -412,9 +452,15 @@
                 // Clear in-flight power-ups and cancel any active effects (AC-09)
                 activePowerUps = [];
                 activeEffects  = {};
+                // Restore base paddle width (US-11 AC-05: no drift across runs)
+                currentPaddleWidth = PADDLE_WIDTH;
             } else {
                 // Still have lives - reset ball and paddle, continue
                 resetBall();
+                // US-11: clear size effects and restore base paddle width
+                delete activeEffects['wide'];
+                delete activeEffects['small'];
+                currentPaddleWidth = PADDLE_WIDTH;
                 paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
             }
             return; // skip remaining collision checks this frame
@@ -427,7 +473,7 @@
         // ~9.06 px, still below min(BRICK_HEIGHT, BALL_RADIUS*2) = 16 px.
         // If future power-ups push the speed past 16 px/frame, switch to a
         // raycast / swept-AABB approach to prevent tunneling.
-        const paddleResult = GameCore.computePaddleBounce(ballX, ballY, ballVX, ballVY, BALL_RADIUS, paddleX, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT, MAX_BOUNCE_ANGLE, currentSpeedMag);
+        const paddleResult = GameCore.computePaddleBounce(ballX, ballY, ballVX, ballVY, BALL_RADIUS, paddleX, PADDLE_Y, currentPaddleWidth, PADDLE_HEIGHT, MAX_BOUNCE_ANGLE, currentSpeedMag);
         ballVX = paddleResult.vx; ballVY = paddleResult.vy; ballY = paddleResult.y;
 
         // --- Brick collisions (delegated to GameCore) ---
@@ -459,7 +505,7 @@
             capsule.y += POWERUP_FALL_SPEED * dt;
 
             // Collection by paddle - delegated to pure GameCore function (AC-08)
-            if (GameCore.checkPowerUpCollection(capsule, paddleX, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT)) {
+            if (GameCore.checkPowerUpCollection(capsule, paddleX, PADDLE_Y, currentPaddleWidth, PADDLE_HEIGHT)) {
                 activateEffect(capsule.type);
                 activePowerUps.splice(i, 1);
                 continue;
@@ -482,6 +528,12 @@
                 if (type === 'fast' || type === 'slow') {
                     currentSpeedMag = BALL_SPEED_MAG;
                     applyBallSpeedMagnitude(currentSpeedMag);
+                }
+                // US-11 AC-05: on expiry, restore the base paddle width exactly
+                // — no cumulative drift. Re-clamp so the shrink/grow stays valid.
+                if (type === 'wide' || type === 'small') {
+                    currentPaddleWidth = PADDLE_WIDTH;
+                    paddleX = Math.max(0, Math.min(CANVAS_WIDTH - currentPaddleWidth, paddleX));
                 }
             }
         }
@@ -513,7 +565,7 @@
 
         // --- Draw paddle ---
         ctx.fillStyle = '#ecf0f1';
-        ctx.fillRect(paddleX, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT);
+        ctx.fillRect(paddleX, PADDLE_Y, currentPaddleWidth, PADDLE_HEIGHT);
 
         // --- Draw ball ---
         ctx.beginPath();
