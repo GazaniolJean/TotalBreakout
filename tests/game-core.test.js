@@ -447,6 +447,10 @@ describe('stickyBallX — US-14', () => {
   });
 });
 
-
-
-// ------
+// ---------------------------------------------------------------------------
+// US-15 — Extra life power-up
+// ---------------------------------------------------------------------------
+// AC-01..AC-05: instant lives increment (Math.min(lives+1, MAX_LIVES)) lives
+// entirely in index.html (activateEffect). No pure function extracted.
+// Tested manually: collect capsule when lives < MAX_LIVES → lives++, HUD updates.
+//                  collect capsule when lives === MAX_LIVES → no change.
