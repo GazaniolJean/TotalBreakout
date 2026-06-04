@@ -122,6 +122,8 @@
     // ---- Power-ups (US-09 infrastructure) ----
     // Probability that a destroyed brick spawns a capsule.
     const POWERUP_DROP_CHANCE = 0.20;
+    // Separate drop chance for the extra-life capsule — rarer than standard power-ups (AC-01).
+    const EXTRA_LIFE_DROP_CHANCE = 0.05;
     // Vertical fall speed of capsules (px / frame at 60 fps), independent of ball speed.
     const POWERUP_FALL_SPEED  = 3;
     // Capsule square side length, used for both AABB collision and rendering.
@@ -156,7 +158,8 @@
         slow: '#74B9FF',
         wide: '#00B894',
         small: '#E17055',
-        sticky: '#FD79A8'
+        sticky: '#FD79A8',
+        extralife: '#55EFC4'
     };
     // Per-type short label drawn inside the capsule.
     const POWERUP_LABELS = {
@@ -165,7 +168,8 @@
         slow: '▼',
         wide: '◀▶',
         small: '▶◀',
-        sticky: '●'
+        sticky: '●',
+        extralife: '♥'
     };
     // Per-type effect duration in milliseconds (real types arrive in later US).
     const POWERUP_DURATIONS = {
@@ -411,6 +415,14 @@
         else if (type === 'sticky') {
             stickyActive = true; // arm the sticky — will trigger on next paddle contact
         }
+
+        // Extra-life power-up (US-15): instant, permanent, no timed effect.
+        else if (type === 'extralife') {
+            // AC-02: cap at MAX_LIVES — no effect if already at max
+            lives = Math.min(lives + 1, MAX_LIVES);
+            updateHUD(); // AC-03: immediate HUD update
+            // AC-04: no activeEffects entry, no duration — instant and permanent
+        }
     }
 
     // Renormalise the ball velocity vector to the requested magnitude while
@@ -576,6 +588,10 @@
             if (Math.random() < POWERUP_DROP_CHANCE) {
                 const randomType = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
                 spawnPowerUp(brickResult.hitRow, brickResult.hitCol, randomType);
+            }
+            // Extra life — independent roll (AC-01)
+            if (Math.random() < EXTRA_LIFE_DROP_CHANCE) {
+                spawnPowerUp(brickResult.hitRow, brickResult.hitCol, 'extralife');
             }
 
             if (GameCore.checkVictory(bricks)) gameState = 'victory';
@@ -790,4 +806,30 @@
 
             ctx.textAlign = 'left';
             ctx.textBaseline = 'alphabetic';
-      
+        }
+    }
+
+    // ============================================================
+    // MAIN LOOP - update then draw, driven by requestAnimationFrame
+    // ============================================================
+    let lastTime = 0;
+
+    function gameLoop(timestamp) {
+        // First frame: seed lastTime so the initial deltaTime is ~0, not the
+        // full page-load timestamp (which would teleport the ball).
+        if (!lastTime) lastTime = timestamp;
+        const deltaTime = timestamp - lastTime;
+        lastTime = timestamp;
+
+        update(deltaTime);
+        draw();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    // Initialise HUD and start the loop.
+    updateHUD();
+    requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
