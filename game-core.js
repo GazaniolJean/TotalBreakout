@@ -183,6 +183,18 @@
   }
 
   /**
+   * computeSpeedEffect(baseSpeed, multiplier)
+   * Pure scalar multiplication used by US-10 speed power-ups (fast / slow).
+   * The caller renormalises the ball velocity vector so direction is preserved
+   * (AC-03) and applies the result on the same frame the capsule is collected
+   * (AC-05). Restoring base speed at expiration (AC-04) is just a call with
+   * multiplier === 1.0.
+   */
+  function computeSpeedEffect(baseSpeed, multiplier) {
+    return baseSpeed * multiplier;
+  }
+
+  /**
    * checkPowerUpCollection(capsule, paddleX, paddleY, paddleWidth, paddleHeight)
    * Pure AABB overlap test between a falling power-up capsule and the paddle.
    * The capsule is expected to expose { x, y } as its top-left corner, plus a
@@ -221,5 +233,6 @@
   exports.computeBrickCollision  = computeBrickCollision;
   exports.computeRowPoints       = computeRowPoints;
   exports.checkPowerUpCollection = checkPowerUpCollection;
+  exports.computeSpeedEffect     = computeSpeedEffect;
 
 })(typeof module !== 'undefined' ? module.exports : (window.GameCore = {}));

@@ -126,18 +126,38 @@
     const POWERUP_FALL_SPEED  = 3;
     // Capsule square side length, used for both AABB collision and rendering.
     const POWERUP_SIZE        = 20;
+
+    // ---- Speed power-ups (US-10) ----
+    // Magnitude multipliers applied to the ball velocity vector while the
+    // effect is active. Direction is preserved (AC-03); only magnitude changes.
+    const SPEED_FAST_MULT  = 1.6;
+    const SPEED_SLOW_MULT  = 0.55;
+    // Shared duration in ms for both fast and slow capsules (AC-01, AC-02).
+    const SPEED_DURATION   = 8000;
+
     // Per-type colour palette (extended in US-10..US-16). Placeholder 'test' here.
     const POWERUP_COLORS = {
-        test: '#FFFFFF'
+        test: '#FFFFFF',
+        fast: '#FF6B35',
+        slow: '#74B9FF'
     };
     // Per-type short label drawn inside the capsule.
     const POWERUP_LABELS = {
-        test: 'T'
+        test: 'T',
+        fast: '▲',
+        slow: '▼'
     };
     // Per-type effect duration in milliseconds (real types arrive in later US).
     const POWERUP_DURATIONS = {
-        test: 5000
+        test: 5000,
+        fast: SPEED_DURATION,
+        slow: SPEED_DURATION
     };
+
+    // Real power-up types available in the random drop pool (US-10).
+    // 'test' is intentionally kept out of the pool: it was a US-09 placeholder
+    // and remains supported in POWERUP_COLORS/LABELS/DURATIONS only for tooling.
+    const POWERUP_TYPES = ['fast', 'slow'];
 
     // ============================================================
     // CANVAS SETUP
@@ -156,6 +176,10 @@
     let ballY  = 420; // initial position above paddle
     let ballVX = BALL_SPEED_X;
     let ballVY = -BALL_SPEED_Y;
+    // Current ball speed magnitude — driven by US-10 speed power-ups.
+    // Defaults to BALL_SPEED_MAG and is restored to that value at effect
+    // expiration (AC-04: no cumulative drift).
+    let currentSpeedMag = BALL_SPEED_MAG;
 
     // Paddle - centred horizontally
     let paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
@@ -290,10 +314,46 @@
         });
     }
 
-    // Activate (or refresh) a timed effect for a given power-up type.
+    // Activate (or extend) a timed effect for a given power-up type.
+    // CR-01: collecting the same type while the effect is already active
+    // ADDS the duration to the remaining time (capped at duration * 3) and
+    // does NOT re-apply the magnitude (no speed compounding). On first
+    // collection, the effect starts fresh and the magnitude is applied.
     function activateEffect(type) {
-        const duration = POWERUP_DURATIONS[type];
+        const duration    = POWERUP_DURATIONS[type];
+        const maxDuration = duration * 3; // CR-01 cap
+
+        if (activeEffects[type]) {
+            // Stack: extend remaining time, cap at 3x, do NOT re-apply magnitude.
+            activeEffects[type].remainingMs = Math.min(
+                activeEffects[type].remainingMs + duration,
+                maxDuration
+            );
+            activeEffects[type].totalMs = maxDuration;
+            return; // effect already applied — no speed/size change
+        }
+
+        // First collection: start fresh.
         activeEffects[type] = { remainingMs: duration, totalMs: duration };
+
+        // Speed power-ups (US-10): apply magnitude change on first activation
+        // only. Direction is preserved (AC-03) by renormalising the existing
+        // velocity vector. Effect lands on the same frame as collection (AC-05).
+        if (type === 'fast' || type === 'slow') {
+            const multiplier = (type === 'fast') ? SPEED_FAST_MULT : SPEED_SLOW_MULT;
+            currentSpeedMag = GameCore.computeSpeedEffect(BALL_SPEED_MAG, multiplier);
+            applyBallSpeedMagnitude(currentSpeedMag);
+        }
+    }
+
+    // Renormalise the ball velocity vector to the requested magnitude while
+    // preserving its direction. Used by US-10 speed effects on apply / expire.
+    function applyBallSpeedMagnitude(newMag) {
+        const currentMag = Math.sqrt(ballVX * ballVX + ballVY * ballVY);
+        if (currentMag === 0) return; // ball is stationary — nothing to scale
+        const scale = newMag / currentMag;
+        ballVX *= scale;
+        ballVY *= scale;
     }
 
     // Full game reset - called on restart after game over
@@ -308,6 +368,8 @@
         // Clear in-flight power-ups and cancel any active effects (AC-09)
         activePowerUps = [];
         activeEffects  = {};
+        // Restore base ball speed magnitude (US-10 AC-04: no drift across runs).
+        currentSpeedMag = BALL_SPEED_MAG;
         gameState = 'playing';
         updateHUD();
     }
@@ -361,9 +423,11 @@
         // --- Paddle collision (delegated to GameCore) ---
         // NOTE on tunneling: AABB detection is sufficient at current speeds
         // (BALL_SPEED_MAG ~ 5.66 px/frame vs BRICK_HEIGHT 20 px, BALL_RADIUS*2 16 px).
-        // If speed ever exceeds min(BRICK_HEIGHT, BALL_RADIUS * 2) = 16 px/frame,
-        // replace this with a raycast / swept-AABB approach to prevent tunneling.
-        const paddleResult = GameCore.computePaddleBounce(ballX, ballY, ballVX, ballVY, BALL_RADIUS, paddleX, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT, MAX_BOUNCE_ANGLE, BALL_SPEED_MAG);
+        // With US-10 SPEED_FAST_MULT = 1.6 the peak per-frame magnitude reaches
+        // ~9.06 px, still below min(BRICK_HEIGHT, BALL_RADIUS*2) = 16 px.
+        // If future power-ups push the speed past 16 px/frame, switch to a
+        // raycast / swept-AABB approach to prevent tunneling.
+        const paddleResult = GameCore.computePaddleBounce(ballX, ballY, ballVX, ballVY, BALL_RADIUS, paddleX, PADDLE_Y, PADDLE_WIDTH, PADDLE_HEIGHT, MAX_BOUNCE_ANGLE, currentSpeedMag);
         ballVX = paddleResult.vx; ballVY = paddleResult.vy; ballY = paddleResult.y;
 
         // --- Brick collisions (delegated to GameCore) ---
@@ -377,11 +441,12 @@
             updateHUD();
 
             // --- Power-up drop roll (AC-01) ---
-            // On every brick destruction, roll for a capsule drop. For US-09 the
-            // only available type is the placeholder 'test' - real types come in
-            // US-10..US-16 and will be selected here by weighted random.
+            // On every brick destruction, roll for a capsule drop. US-10 brings
+            // the first real types ('fast' / 'slow') into the pool; later US
+            // extend POWERUP_TYPES with the remaining mechanics.
             if (Math.random() < POWERUP_DROP_CHANCE) {
-                spawnPowerUp(brickResult.hitRow, brickResult.hitCol, 'test');
+                const randomType = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+                spawnPowerUp(brickResult.hitRow, brickResult.hitCol, randomType);
             }
 
             if (GameCore.checkVictory(bricks)) gameState = 'victory';
@@ -411,6 +476,13 @@
             activeEffects[type].remainingMs -= deltaTime;
             if (activeEffects[type].remainingMs <= 0) {
                 delete activeEffects[type];
+                // US-10 AC-04: on expiry, restore the base magnitude exactly —
+                // no cumulative drift. Direction is preserved (AC-03) by
+                // renormalising the existing velocity vector.
+                if (type === 'fast' || type === 'slow') {
+                    currentSpeedMag = BALL_SPEED_MAG;
+                    applyBallSpeedMagnitude(currentSpeedMag);
+                }
             }
         }
     }
