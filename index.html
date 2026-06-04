@@ -143,13 +143,20 @@
     // Shared duration in ms for both wide and small capsules (AC-01, AC-02).
     const PADDLE_SIZE_DURATION   = 10000; // ms
 
+    // ---- Sticky power-up (US-14) ----
+    // Auto-release timer in ms: a glued ball is automatically released after
+    // this delay if the player does not move (AC-05). Single-use, not timed via
+    // POWERUP_DURATIONS — the sticky is consumed on first catch-release (AC-04).
+    const STICKY_DURATION = 5000; // ms
+
     // Per-type colour palette (extended in US-10..US-16). Placeholder 'test' here.
     const POWERUP_COLORS = {
         test: '#FFFFFF',
         fast: '#FF6B35',
         slow: '#74B9FF',
         wide: '#00B894',
-        small: '#E17055'
+        small: '#E17055',
+        sticky: '#FD79A8'
     };
     // Per-type short label drawn inside the capsule.
     const POWERUP_LABELS = {
@@ -157,7 +164,8 @@
         fast: '▲',
         slow: '▼',
         wide: '◀▶',
-        small: '▶◀'
+        small: '▶◀',
+        sticky: '●'
     };
     // Per-type effect duration in milliseconds (real types arrive in later US).
     const POWERUP_DURATIONS = {
@@ -171,7 +179,7 @@
     // Real power-up types available in the random drop pool (US-10).
     // 'test' is intentionally kept out of the pool: it was a US-09 placeholder
     // and remains supported in POWERUP_COLORS/LABELS/DURATIONS only for tooling.
-    const POWERUP_TYPES = ['fast', 'slow', 'wide', 'small'];
+    const POWERUP_TYPES = ['fast', 'slow', 'wide', 'small', 'sticky'];
 
     // ============================================================
     // CANVAS SETUP
@@ -219,6 +227,12 @@
     // Each entry: { remainingMs, totalMs }
     let activeEffects = {};
 
+    // Sticky power-up state (US-14)
+    let stickyActive    = false; // true while the sticky power-up is ready to catch the ball
+    let ballStuck       = false; // true while the ball is physically glued to the paddle
+    let stickyHitOffset = 0;     // ballX - paddleX at the moment of sticking (AC-02)
+    let stickyTimer     = 0;     // ms elapsed since ball stuck (AC-05 auto-release)
+
     // ============================================================
     // INPUT - keyboard, mouse and touch move the paddle
     // ============================================================
@@ -228,6 +242,11 @@
 
     window.addEventListener('keydown', (e) => {
         keys[e.key.toLowerCase()] = true;
+        // AC-03: any game key releases a stuck ball, using the existing listener.
+        if (ballStuck && gameState === 'playing') {
+            releaseStickyBall();
+            return;
+        }
         // Start the game on any key (except F1-F12 and dead keys) from the start screen
         if (gameState === 'start' && !e.key.startsWith('F') && e.key !== 'Dead') {
             gameState = 'playing';
@@ -245,6 +264,7 @@
 
     // --- Mouse click: start game from start screen ---
     canvas.addEventListener('mousedown', () => {
+        if (ballStuck && gameState === 'playing') { releaseStickyBall(); return; }
         if (gameState === 'start') {
             gameState = 'playing';
         }
@@ -276,6 +296,8 @@
             resetGame();
             return;
         }
+        // AC-03: a tap releases a stuck ball.
+        if (ballStuck) { releaseStickyBall(); return; }
         const touch  = e.touches[0];
         touchStartX  = touch.clientX;
         paddleStartX = paddleX;
@@ -383,6 +405,12 @@
             // AC-04: never let the resized paddle leave the canvas
             paddleX = Math.max(0, Math.min(CANVAS_WIDTH - currentPaddleWidth, paddleX));
         }
+
+        // Sticky power-up (US-14): single-use, not timed. Does NOT go through the
+        // activeEffects system — just arm a flag that catches the next bounce.
+        else if (type === 'sticky') {
+            stickyActive = true; // arm the sticky — will trigger on next paddle contact
+        }
     }
 
     // Renormalise the ball velocity vector to the requested magnitude while
@@ -393,6 +421,22 @@
         const scale = newMag / currentMag;
         ballVX *= scale;
         ballVY *= scale;
+    }
+
+    // Release a glued ball (US-14). Computes the release velocity with the same
+    // GameCore.computePaddleBounce used for normal bounces, evaluated at the
+    // current release position. vy=1 is passed to satisfy the bounce guard.
+    function releaseStickyBall() {
+        const releaseResult = GameCore.computePaddleBounce(
+            ballX, PADDLE_Y, 0, 1, BALL_RADIUS, // vy=1 to trigger the bounce guard
+            paddleX, PADDLE_Y, currentPaddleWidth, PADDLE_HEIGHT,
+            MAX_BOUNCE_ANGLE, currentSpeedMag
+        );
+        ballVX      = releaseResult.vx;
+        ballVY      = releaseResult.vy;
+        ballY       = releaseResult.y;
+        ballStuck   = false;
+        stickyTimer = 0;
     }
 
     // Full game reset - called on restart after game over
@@ -410,6 +454,10 @@
         activeEffects  = {};
         // Restore base ball speed magnitude (US-10 AC-04: no drift across runs).
         currentSpeedMag = BALL_SPEED_MAG;
+        // US-14 AC-07: clear all sticky state on full reset.
+        stickyActive = false;
+        ballStuck    = false;
+        stickyTimer  = 0;
         gameState = 'playing';
         updateHUD();
     }
@@ -454,6 +502,10 @@
                 activeEffects  = {};
                 // Restore base paddle width (US-11 AC-05: no drift across runs)
                 currentPaddleWidth = PADDLE_WIDTH;
+                // US-14 AC-07: clear sticky state on life loss.
+                stickyActive = false;
+                ballStuck    = false;
+                stickyTimer  = 0;
             } else {
                 // Still have lives - reset ball and paddle, continue
                 resetBall();
@@ -462,6 +514,10 @@
                 delete activeEffects['small'];
                 currentPaddleWidth = PADDLE_WIDTH;
                 paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
+                // US-14 AC-07: clear sticky state on life loss.
+                stickyActive = false;
+                ballStuck    = false;
+                stickyTimer  = 0;
             }
             return; // skip remaining collision checks this frame
         }
@@ -473,8 +529,35 @@
         // ~9.06 px, still below min(BRICK_HEIGHT, BALL_RADIUS*2) = 16 px.
         // If future power-ups push the speed past 16 px/frame, switch to a
         // raycast / swept-AABB approach to prevent tunneling.
-        const paddleResult = GameCore.computePaddleBounce(ballX, ballY, ballVX, ballVY, BALL_RADIUS, paddleX, PADDLE_Y, currentPaddleWidth, PADDLE_HEIGHT, MAX_BOUNCE_ANGLE, currentSpeedMag);
-        ballVX = paddleResult.vx; ballVY = paddleResult.vy; ballY = paddleResult.y;
+        if (ballStuck) {
+            // Ball is glued: follow paddle horizontally (AC-02), count auto-release timer (AC-05)
+            ballX = GameCore.stickyBallX(paddleX, currentPaddleWidth, stickyHitOffset);
+            ballY = PADDLE_Y - BALL_RADIUS;
+            ballVX = 0;
+            ballVY = 0;
+            stickyTimer += deltaTime;
+            if (stickyTimer >= STICKY_DURATION) {
+                releaseStickyBall(); // AC-05 auto-release
+            }
+        } else {
+            const paddleResult = GameCore.computePaddleBounce(ballX, ballY, ballVX, ballVY, BALL_RADIUS,
+                paddleX, PADDLE_Y, currentPaddleWidth, PADDLE_HEIGHT, MAX_BOUNCE_ANGLE, currentSpeedMag);
+            if (stickyActive && paddleResult.vy !== ballVY) {
+                // A bounce occurred AND sticky is armed: glue the ball instead (AC-02)
+                ballStuck        = true;
+                stickyActive     = false; // consumed (AC-04)
+                stickyTimer      = 0;
+                stickyHitOffset  = ballX - paddleX;
+                ballX = GameCore.stickyBallX(paddleX, currentPaddleWidth, stickyHitOffset);
+                ballY = PADDLE_Y - BALL_RADIUS;
+                ballVX = 0;
+                ballVY = 0;
+            } else {
+                ballVX = paddleResult.vx;
+                ballVY = paddleResult.vy;
+                ballY  = paddleResult.y;
+            }
+        }
 
         // --- Brick collisions (delegated to GameCore) ---
         // At most one brick collision is processed per frame.
@@ -573,6 +656,17 @@
         ctx.fillStyle = '#ffffff';
         ctx.fill();
         ctx.closePath();
+
+        // --- Sticky indicator: ring around the ball when stuck (US-14) ---
+        if (ballStuck) {
+            ctx.beginPath();
+            ctx.arc(ballX, ballY, BALL_RADIUS + 4, 0, Math.PI * 2);
+            ctx.strokeStyle = '#FD79A8';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.closePath();
+            ctx.lineWidth = 1;
+        }
 
         // --- Draw power-up capsules (AC-05, AC-07) ---
         // Coloured square + centred single-letter label. Colours come from
@@ -696,30 +790,4 @@
 
             ctx.textAlign = 'left';
             ctx.textBaseline = 'alphabetic';
-        }
-    }
-
-    // ============================================================
-    // GAME LOOP - requestAnimationFrame only; no setInterval/setTimeout
-    // ============================================================
-    let lastTime = 0;
-
-    function gameLoop(timestamp) {
-        // Cap deltaTime to 50 ms to avoid large jumps after tab-switch / lag spike
-        const deltaTime = Math.min(timestamp - lastTime, 50);
-        lastTime = timestamp;
-
-        update(deltaTime);
-        draw();
-
-        requestAnimationFrame(gameLoop);
-    }
-
-    // Initialise HUD before first frame
-    updateHUD();
-
-    // Kick off the loop
-    requestAnimationFrame(gameLoop);
-    </script>
-</body>
-</html>
+      

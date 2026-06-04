@@ -225,6 +225,18 @@
     );
   }
 
+  /**
+   * stickyBallX(paddleX, paddleWidth, hitOffset)
+   * Returns the ball X position while glued to the paddle.
+   * hitOffset = ballX - paddleX at the moment of sticking.
+   * Pure function — no side effects.
+   * paddleWidth is accepted for symmetry with computePaddleBounce and future
+   * extensibility, but is not used in this simple calculation.
+   */
+  function stickyBallX(paddleX, paddleWidth, hitOffset) {
+    return paddleX + hitOffset;
+  }
+
   // Export all public functions
   exports.buildBricks            = buildBricks;
   exports.checkVictory           = checkVictory;
@@ -234,5 +246,6 @@
   exports.computeRowPoints       = computeRowPoints;
   exports.checkPowerUpCollection = checkPowerUpCollection;
   exports.computeSpeedEffect     = computeSpeedEffect;
+  exports.stickyBallX            = stickyBallX;
 
 })(typeof module !== 'undefined' ? module.exports : (window.GameCore = {}));
