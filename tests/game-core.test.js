@@ -428,3 +428,12 @@ describe('computeSpeedEffect - US-10', () => {
   // CR-01: duration stacking logic for same-type power-up collection is in
   // activateEffect() in index.html — tested manually (DOM/game loop dependency).
 });
+
+
+// ---------------------------------------------------------------------------
+// US-11 — Paddle size power-ups
+// ---------------------------------------------------------------------------
+// AC-01..AC-08: paddle width mutation logic lives in index.html (activateEffect,
+// resetGame, draw). No pure function extracted — tested manually.
+// CR-01 duration stacking is covered by the activateEffect guard already
+// present from US-10.
