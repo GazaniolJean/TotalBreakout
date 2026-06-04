@@ -429,11 +429,24 @@ describe('computeSpeedEffect - US-10', () => {
   // activateEffect() in index.html — tested manually (DOM/game loop dependency).
 });
 
+describe('stickyBallX — US-14', () => {
+  test('returns paddleX + hitOffset', () => {
+    expect(GameCore.stickyBallX(350, 100, 30)).toBe(380);
+  });
+  test('hitOffset = 0: ball is at paddle left edge', () => {
+    expect(GameCore.stickyBallX(350, 100, 0)).toBe(350);
+  });
+  test('hitOffset = paddleWidth: ball is at paddle right edge', () => {
+    expect(GameCore.stickyBallX(350, 100, 100)).toBe(450);
+  });
+  test('hitOffset = paddleWidth/2: ball is at paddle centre', () => {
+    expect(GameCore.stickyBallX(350, 100, 50)).toBe(400);
+  });
+  test('negative hitOffset: ball is left of paddle', () => {
+    expect(GameCore.stickyBallX(350, 100, -10)).toBe(340);
+  });
+});
 
-// ---------------------------------------------------------------------------
-// US-11 — Paddle size power-ups
-// ---------------------------------------------------------------------------
-// AC-01..AC-08: paddle width mutation logic lives in index.html (activateEffect,
-// resetGame, draw). No pure function extracted — tested manually.
-// CR-01 duration stacking is covered by the activateEffect guard already
-// present from US-10.
+
+
+// ------
