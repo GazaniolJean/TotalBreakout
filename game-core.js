@@ -237,6 +237,35 @@
     return paddleX + hitOffset;
   }
 
+  /**
+   * spawnExtraBalls(sourceBall, count, spreadDeg, speedMag)
+   * Returns an array of (count - 1) new ball objects spawned from sourceBall,
+   * each offset by ±spreadDeg from the source direction (AC-02).
+   * Does NOT mutate sourceBall or the balls array — caller does the push.
+   */
+  function spawnExtraBalls(sourceBall, count, spreadDeg, speedMag) {
+    const extraBalls = [];
+    const baseAngle = Math.atan2(sourceBall.vy, sourceBall.vx);
+    const spreadRad = (spreadDeg * Math.PI) / 180;
+
+    for (let i = 1; i < count; i++) {
+      // Alternate sign: +spread, -spread, +2*spread, -2*spread, …
+      const sign  = i % 2 === 1 ? 1 : -1;
+      const steps = Math.ceil(i / 2);
+      const angle = baseAngle + sign * steps * spreadRad;
+      extraBalls.push({
+        x: sourceBall.x,
+        y: sourceBall.y,
+        vx: Math.cos(angle) * speedMag,
+        vy: Math.sin(angle) * speedMag,
+        stuck: false,
+        stickyTimer: 0,
+        stickyHitOffset: 0
+      });
+    }
+    return extraBalls;
+  }
+
   // Export all public functions
   exports.buildBricks            = buildBricks;
   exports.checkVictory           = checkVictory;
@@ -247,5 +276,6 @@
   exports.checkPowerUpCollection = checkPowerUpCollection;
   exports.computeSpeedEffect     = computeSpeedEffect;
   exports.stickyBallX            = stickyBallX;
+  exports.spawnExtraBalls        = spawnExtraBalls;
 
 })(typeof module !== 'undefined' ? module.exports : (window.GameCore = {}));

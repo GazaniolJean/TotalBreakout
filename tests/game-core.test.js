@@ -454,3 +454,44 @@ describe('stickyBallX — US-14', () => {
 // entirely in index.html (activateEffect). No pure function extracted.
 // Tested manually: collect capsule when lives < MAX_LIVES → lives++, HUD updates.
 //                  collect capsule when lives === MAX_LIVES → no change.
+
+// ---------------------------------------------------------------------------
+// US-12 — Multiball power-up
+// ---------------------------------------------------------------------------
+describe('spawnExtraBalls — US-12', () => {
+  const SPEED = Math.sqrt(32); // same as BALL_SPEED_MAG
+  const sourceBall = { x: 400, y: 300, vx: 4, vy: -4, stuck: false, stickyTimer: 0, stickyHitOffset: 0 };
+
+  test('AC-09: returns count-1 extra balls', () => {
+    const extras = GameCore.spawnExtraBalls(sourceBall, 3, 20, SPEED);
+    expect(extras.length).toBe(2);
+  });
+
+  test('AC-02: each extra ball has the correct speed magnitude', () => {
+    const extras = GameCore.spawnExtraBalls(sourceBall, 3, 20, SPEED);
+    extras.forEach(b => {
+      const mag = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+      expect(mag).toBeCloseTo(SPEED, 2);
+    });
+  });
+
+  test('AC-09: does not mutate sourceBall', () => {
+    const original = { ...sourceBall };
+    GameCore.spawnExtraBalls(sourceBall, 3, 20, SPEED);
+    expect(sourceBall.vx).toBe(original.vx);
+    expect(sourceBall.vy).toBe(original.vy);
+  });
+
+  test('returns empty array when count = 1', () => {
+    const extras = GameCore.spawnExtraBalls(sourceBall, 1, 20, SPEED);
+    expect(extras.length).toBe(0);
+  });
+
+  test('each extra ball starts at sourceBall position', () => {
+    const extras = GameCore.spawnExtraBalls(sourceBall, 3, 20, SPEED);
+    extras.forEach(b => {
+      expect(b.x).toBe(sourceBall.x);
+      expect(b.y).toBe(sourceBall.y);
+    });
+  });
+});
