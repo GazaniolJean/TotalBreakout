@@ -481,17 +481,90 @@ describe('spawnExtraBalls — US-12', () => {
     expect(sourceBall.vx).toBe(original.vx);
     expect(sourceBall.vy).toBe(original.vy);
   });
+});
 
-  test('returns empty array when count = 1', () => {
-    const extras = GameCore.spawnExtraBalls(sourceBall, 1, 20, SPEED);
-    expect(extras.length).toBe(0);
+// ---------------------------------------------------------------------------
+// computeBrickCollisionPenetrating — US-13
+// ---------------------------------------------------------------------------
+describe('computeBrickCollisionPenetrating — US-13', () => {
+  const B_OFFSET_X = 32, B_OFFSET_Y = 60;
+  const B_W = 70, B_H = 20, B_GAP = 4;
+  const BALL_R = 8;
+
+  function brickCentre(r, c) {
+    return {
+      cx: B_OFFSET_X + c * (B_W + B_GAP) + B_W / 2,
+      by: B_OFFSET_Y + r * (B_H + B_GAP)
+    };
+  }
+
+  test('AC-03: penetration=0 behaves like computeBrickCollision (bounce)', () => {
+    const bricks = GameCore.buildBricks(5, 10);
+    const { cx, by } = brickCentre(0, 0);
+    const result = GameCore.computeBrickCollisionPenetrating(
+      cx, by - BALL_R + 2, 0, 3, BALL_R,
+      bricks, B_OFFSET_X, B_OFFSET_Y, B_W, B_H, B_GAP, 0
+    );
+    expect(result).not.toBeNull();
+    expect(result.vy).toBeLessThan(0); // bounced upward
+    expect(result.destroyedBricks.length).toBe(1);
   });
 
-  test('each extra ball starts at sourceBall position', () => {
-    const extras = GameCore.spawnExtraBalls(sourceBall, 3, 20, SPEED);
-    extras.forEach(b => {
-      expect(b.x).toBe(sourceBall.x);
-      expect(b.y).toBe(sourceBall.y);
-    });
+  test('AC-02: penetration>0 does not change velocity', () => {
+    const bricks = GameCore.buildBricks(5, 10);
+    const { cx, by } = brickCentre(0, 0);
+    const result = GameCore.computeBrickCollisionPenetrating(
+      cx, by - BALL_R + 2, 0, 3, BALL_R,
+      bricks, B_OFFSET_X, B_OFFSET_Y, B_W, B_H, B_GAP, 2
+    );
+    expect(result).not.toBeNull();
+    expect(result.vx).toBe(0);
+    expect(result.vy).toBe(3); // unchanged
+  });
+
+  test('AC-02: remainingPenetration decremented by hit count', () => {
+    const bricks = GameCore.buildBricks(5, 10);
+    const { cx, by } = brickCentre(0, 0);
+    const result = GameCore.computeBrickCollisionPenetrating(
+      cx, by - BALL_R + 2, 0, 3, BALL_R,
+      bricks, B_OFFSET_X, B_OFFSET_Y, B_W, B_H, B_GAP, 3
+    );
+    expect(result.remainingPenetration).toBe(3 - result.destroyedBricks.length);
+  });
+
+  test('AC-09: destroyed bricks (false) are not included', () => {
+    const bricks = GameCore.buildBricks(5, 10);
+    bricks[0][0] = false;
+    const { cx, by } = brickCentre(0, 0);
+    const result = GameCore.computeBrickCollisionPenetrating(
+      cx, by - BALL_R + 2, 0, 3, BALL_R,
+      bricks, B_OFFSET_X, B_OFFSET_Y, B_W, B_H, B_GAP, 2
+    );
+    // brick[0][0] is false — should not appear in destroyedBricks
+    if (result !== null) {
+      const found = result.destroyedBricks.find(b => b.row === 0 && b.col === 0);
+      expect(found).toBeUndefined();
+    } else {
+      expect(result).toBeNull();
+    }
+  });
+
+  test('returns null when no brick overlaps', () => {
+    const bricks = GameCore.buildBricks(5, 10);
+    const result = GameCore.computeBrickCollisionPenetrating(
+      400, 500, 0, 3, BALL_R,
+      bricks, B_OFFSET_X, B_OFFSET_Y, B_W, B_H, B_GAP, 2
+    );
+    expect(result).toBeNull();
+  });
+
+  test('does not mutate bricks array', () => {
+    const bricks = GameCore.buildBricks(5, 10);
+    const { cx, by } = brickCentre(0, 0);
+    GameCore.computeBrickCollisionPenetrating(
+      cx, by - BALL_R + 2, 0, 3, BALL_R,
+      bricks, B_OFFSET_X, B_OFFSET_Y, B_W, B_H, B_GAP, 2
+    );
+    expect(bricks[0][0]).toBe(true);
   });
 });

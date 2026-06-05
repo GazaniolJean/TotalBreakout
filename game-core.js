@@ -266,16 +266,83 @@
     return extraBalls;
   }
 
-  // Export all public functions
-  exports.buildBricks            = buildBricks;
-  exports.checkVictory           = checkVictory;
-  exports.computeWallCollisions  = computeWallCollisions;
-  exports.computePaddleBounce    = computePaddleBounce;
-  exports.computeBrickCollision  = computeBrickCollision;
-  exports.computeRowPoints       = computeRowPoints;
-  exports.checkPowerUpCollection = checkPowerUpCollection;
-  exports.computeSpeedEffect     = computeSpeedEffect;
-  exports.stickyBallX            = stickyBallX;
-  exports.spawnExtraBalls        = spawnExtraBalls;
+  /**
+   * computeBrickCollisionPenetrating(ballX, ballY, ballVX, ballVY, ballRadius,
+   *   bricks, brickOffsetX, brickOffsetY, brickWidth, brickHeight, brickGap,
+   *   penetration)
+   * Penetrating variant of computeBrickCollision (US-13).
+   * When penetration > 0: collects ALL alive bricks overlapping the ball AABB,
+   * marks them for destruction without bouncing, decrements penetration by count.
+   * When penetration === 0: falls back to standard single-brick bounce.
+   * Does NOT mutate bricks or ball — caller applies the returned state.
+   * Returns { vx, vy, x, y, destroyedBricks: [{row,col}], remainingPenetration }
+   * or null if no overlap found.
+   */
+  function computeBrickCollisionPenetrating(
+    ballX, ballY, ballVX, ballVY, ballRadius,
+    bricks, brickOffsetX, brickOffsetY,
+    brickWidth, brickHeight, brickGap,
+    penetration
+  ) {
+    const rows = bricks.length;
+    if (rows === 0) return null;
+    const cols = bricks[0].length;
 
-})(typeof module !== 'undefined' ? module.exports : (window.GameCore = {}));
+    // penetration === 0: standard single-bounce behaviour
+    if (penetration === 0) {
+      const standard = computeBrickCollision(
+        ballX, ballY, ballVX, ballVY, ballRadius,
+        bricks, brickOffsetX, brickOffsetY, brickWidth, brickHeight, brickGap
+      );
+      if (!standard) return null;
+      return {
+        vx: standard.vx, vy: standard.vy,
+        x: standard.x,  y: standard.y,
+        destroyedBricks: [{ row: standard.hitRow, col: standard.hitCol }],
+        remainingPenetration: 0
+      };
+    }
+
+    // penetration > 0: collect ALL overlapping alive bricks (AC-07)
+    const destroyedBricks = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (!bricks[r][c]) continue; // already destroyed (AC-09)
+        const brickX = brickOffsetX + c * (brickWidth  + brickGap);
+        const brickY = brickOffsetY + r * (brickHeight + brickGap);
+        if (
+          ballX + ballRadius > brickX &&
+          ballX - ballRadius < brickX + brickWidth &&
+          ballY + ballRadius > brickY &&
+          ballY - ballRadius < brickY + brickHeight
+        ) {
+          destroyedBricks.push({ row: r, col: c });
+        }
+      }
+    }
+
+    if (destroyedBricks.length === 0) return null;
+
+    // No bounce — trajectory unchanged (AC-02)
+    return {
+      vx: ballVX, vy: ballVY,
+      x: ballX,   y: ballY,
+      destroyedBricks,
+      remainingPenetration: Math.max(0, penetration - destroyedBricks.length)
+    };
+  }
+
+  // Export all public functions
+  exports.buildBricks                    = buildBricks;
+  exports.checkVictory                   = checkVictory;
+  exports.computeWallCollisions          = computeWallCollisions;
+  exports.computePaddleBounce            = computePaddleBounce;
+  exports.computeBrickCollision          = computeBrickCollision;
+  exports.computeBrickCollisionPenetrating = computeBrickCollisionPenetrating;
+  exports.computeRowPoints               = computeRowPoints;
+  exports.checkPowerUpCollection         = checkPowerUpCollection;
+  exports.computeSpeedEffect             = computeSpeedEffect;
+  exports.stickyBallX                    = stickyBallX;
+  exports.spawnExtraBalls                = spawnExtraBalls;
+
+})(typeof exports === 'undefined' ? (this.GameCore = {}) : exports);
