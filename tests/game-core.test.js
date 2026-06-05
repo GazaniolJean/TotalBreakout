@@ -1,7 +1,5 @@
 // tests/game-core.test.js — Unit tests for game-core.js (pure logic, no DOM)
-'use strict';
-
-const GameCore = require('../game-core');
+import * as GameCore from '../game-core.js';
 
 // ---------------------------------------------------------------------------
 // Shared test fixtures
