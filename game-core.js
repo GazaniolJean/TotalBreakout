@@ -332,6 +332,44 @@
     };
   }
 
+  /**
+   * computeExplosionChain(bricks, brickTypes, startRow, startCol, rows, cols)
+   * BFS from (startRow, startCol): collects all alive bricks destroyed by chain
+   * reaction. Explosive neighbours trigger further expansion.
+   * Does NOT include (startRow, startCol) itself — caller handles the initiator.
+   * Does NOT mutate bricks or brickTypes.
+   * Returns [{row, col}] of all chain-destroyed bricks (may be empty).
+   */
+  function computeExplosionChain(bricks, brickTypes, startRow, startCol, rows, cols) {
+    const destroyed = [];
+    const visited   = new Set();
+    const queue     = [{ row: startRow, col: startCol }];
+    visited.add(`${startRow},${startCol}`);
+
+    while (queue.length > 0) {
+      const { row, col } = queue.shift();
+      // Explore the 8 neighbours
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const nr = row + dr;
+          const nc = col + dc;
+          if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+          const key = `${nr},${nc}`;
+          if (visited.has(key)) continue;
+          visited.add(key);
+          if (!bricks[nr][nc]) continue; // already destroyed
+          destroyed.push({ row: nr, col: nc });
+          // If this neighbour is explosive, add to queue for further expansion
+          if (brickTypes[nr][nc] === 'explosive') {
+            queue.push({ row: nr, col: nc });
+          }
+        }
+      }
+    }
+    return destroyed;
+  }
+
   // Export all public functions
   exports.buildBricks                    = buildBricks;
   exports.checkVictory                   = checkVictory;
@@ -344,5 +382,6 @@
   exports.computeSpeedEffect             = computeSpeedEffect;
   exports.stickyBallX                    = stickyBallX;
   exports.spawnExtraBalls                = spawnExtraBalls;
+  exports.computeExplosionChain          = computeExplosionChain;
 
 })(typeof exports === 'undefined' ? (this.GameCore = {}) : exports);
