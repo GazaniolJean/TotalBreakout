@@ -24,14 +24,14 @@ Contraintes : solo dev · pas de backend · mobile-friendly · 60 FPS cible
 
 | # | User Story | Statut |
 |---|-----------|--------|
-| US-09 | Système de power-ups — Infrastructure | 🔲 À faire |
-| US-10 | Power-ups vitesse balle (Rapide & Lente) | 🔲 À faire |
-| US-11 | Power-ups raquette (Large & Petite) | 🔲 À faire |
-| US-12 | Multi-balle | 🔲 À faire |
-| US-13 | Pénétration | 🔲 À faire |
-| US-14 | Colle | 🔲 À faire |
-| US-15 | +1 Vie | 🔲 À faire |
-| US-16 | Briques explosives | 🔲 À faire |
+| US-09 | Système de power-ups — Infrastructure | ✅ Fait |
+| US-10 | Power-ups vitesse balle (Rapide & Lente) | ✅ Fait |
+| US-11 | Power-ups raquette (Large & Petite) | ✅ Fait |
+| US-12 | Multi-balle | ✅ Fait |
+| US-13 | Pénétration | ✅ Fait |
+| US-14 | Colle | ✅ Fait |
+| US-15 | +1 Vie | ✅ Fait |
+| US-16 | Briques explosives | ✅ Fait |
 
 ---
 
