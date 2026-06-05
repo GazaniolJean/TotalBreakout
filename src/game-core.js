@@ -1,7 +1,5 @@
 // game-core.js — Pure game logic, no DOM / side-effects.
-// ES module with named exports. Browser compatibility shim at the bottom
-// keeps window.GameCore available for index.html during the ESM migration
-// (steps 1-7). The shim is removed in step 8.
+// ES module with named exports.
 
 /**
  * buildBricks(rows, cols)
@@ -370,8 +368,3 @@ export function computeExplosionChain(bricks, brickTypes, startRow, startCol, ro
   }
   return destroyed;
 }
-
-// ---------------------------------------------------------------------------
-// Browser compatibility shim — temporary, removed in step 8
-// Keeps window.GameCore intact so index.html works without modification.
-// ---------------------------------------------------------
