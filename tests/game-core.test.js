@@ -568,3 +568,56 @@ describe('computeBrickCollisionPenetrating — US-13', () => {
     expect(bricks[0][0]).toBe(true);
   });
 });
+
+describe('computeExplosionChain — US-16', () => {
+  function makeBrickTypes(rows, cols, explosivePositions = []) {
+    const t = [];
+    for (let r = 0; r < rows; r++) {
+      t[r] = [];
+      for (let c = 0; c < cols; c++) t[r][c] = 'normal';
+    }
+    explosivePositions.forEach(([r, c]) => { t[r][c] = 'explosive'; });
+    return t;
+  }
+
+  test('returns empty array when no neighbours are alive', () => {
+    const bricks = [[false, false], [false, false]];
+    const types  = makeBrickTypes(2, 2);
+    expect(GameCore.computeExplosionChain(bricks, types, 0, 0, 2, 2)).toEqual([]);
+  });
+
+  test('destroys all 8 alive neighbours of a normal brick', () => {
+    const bricks = GameCore.buildBricks(3, 3);
+    bricks[1][1] = false; // initiator already destroyed
+    const types = makeBrickTypes(3, 3);
+    const chain = GameCore.computeExplosionChain(bricks, types, 1, 1, 3, 3);
+    expect(chain.length).toBe(8);
+  });
+
+  test('chain reaction: explosive neighbour spreads further', () => {
+    const bricks = GameCore.buildBricks(1, 4);
+    bricks[0][0] = false; // initiator
+    const types = makeBrickTypes(1, 4, [[0, 1]]);
+    const chain = GameCore.computeExplosionChain(bricks, types, 0, 0, 1, 4);
+    const cols = chain.map(b => b.col).sort();
+    expect(cols).toContain(1);
+    expect(cols).toContain(2);
+  });
+
+  test('does not mutate bricks or brickTypes', () => {
+    const bricks = GameCore.buildBricks(3, 3);
+    const types  = makeBrickTypes(3, 3, [[1, 1]]);
+    GameCore.computeExplosionChain(bricks, types, 1, 1, 3, 3);
+    expect(bricks[0][0]).toBe(true);
+    expect(types[1][1]).toBe('explosive');
+  });
+
+  test('does not include already-destroyed bricks in chain', () => {
+    const bricks = GameCore.buildBricks(2, 2);
+    bricks[0][1] = false; // already destroyed
+    const types = makeBrickTypes(2, 2);
+    const chain = GameCore.computeExplosionChain(bricks, types, 0, 0, 2, 2);
+    const found = chain.find(b => b.row === 0 && b.col === 1);
+    expect(found).toBeUndefined();
+  });
+});

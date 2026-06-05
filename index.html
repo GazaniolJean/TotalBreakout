@@ -124,6 +124,8 @@
     const POWERUP_DROP_CHANCE = 0.20;
     // Separate drop chance for the extra-life capsule — rarer than standard power-ups (AC-01).
     const EXTRA_LIFE_DROP_CHANCE = 0.05;
+    // US-16: probability that a generated brick is explosive (AC-01).
+    const EXPLOSIVE_BRICK_CHANCE = 0.08;
     // Vertical fall speed of capsules (px / frame at 60 fps), independent of ball speed.
     const POWERUP_FALL_SPEED  = 3;
     // Capsule square side length, used for both AABB collision and rendering.
@@ -243,6 +245,19 @@
 
     // Bricks - 2-D array [row][col], value: true = alive, false = destroyed
     const bricks = GameCore.buildBricks(BRICK_ROWS, BRICK_COLS);
+
+    // US-16: brickTypes[r][c]: 'normal' | 'explosive' — generated alongside bricks.
+    let brickTypes = [];
+    function generateBrickTypes() {
+        brickTypes = [];
+        for (let r = 0; r < BRICK_ROWS; r++) {
+            brickTypes[r] = [];
+            for (let c = 0; c < BRICK_COLS; c++) {
+                brickTypes[r][c] = Math.random() < EXPLOSIVE_BRICK_CHANCE ? 'explosive' : 'normal';
+            }
+        }
+    }
+    generateBrickTypes();
 
     // Power-up state (US-09)
     // activePowerUps: capsules currently falling toward the paddle.
@@ -509,6 +524,7 @@
         // Rebuild all bricks using GameCore helper
         const freshBricks = GameCore.buildBricks(BRICK_ROWS, BRICK_COLS);
         for (let r = 0; r < BRICK_ROWS; r++) bricks[r] = freshBricks[r];
+        generateBrickTypes(); // US-16 AC-07: regenerate explosive layout
         // Clear in-flight power-ups and cancel any active effects (AC-09)
         activePowerUps = [];
         activeEffects  = {};
@@ -623,6 +639,22 @@
                         bricks[row][col] = false;
                         score += ROW_POINTS[row];
                         anyDestroyed = true;
+
+                        // US-16: trigger explosion chain if this brick is explosive (AC-03, AC-04)
+                        if (brickTypes[row][col] === 'explosive') {
+                            const chainDestroyed = GameCore.computeExplosionChain(
+                                bricks, brickTypes, row, col, BRICK_ROWS, BRICK_COLS
+                            );
+                            for (const { row: cr, col: cc } of chainDestroyed) {
+                                const chainKey = `${cr},${cc}`;
+                                if (!destroyedThisFrame.has(chainKey) && bricks[cr][cc]) {
+                                    destroyedThisFrame.add(chainKey);
+                                    bricks[cr][cc] = false;
+                                    score += ROW_POINTS[cr]; // AC-05
+                                }
+                            }
+                        }
+
                         if (Math.random() < POWERUP_DROP_CHANCE) {
                             const randomType = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
                             spawnPowerUp(row, col, randomType);
@@ -731,6 +763,18 @@
                 const brickY = BRICK_OFFSET_Y + r * (BRICK_HEIGHT + BRICK_GAP);
 
                 ctx.fillRect(brickX, brickY, BRICK_WIDTH, BRICK_HEIGHT);
+
+                // US-16: draw explosive marker (AC-02)
+                if (brickTypes[r][c] === 'explosive') {
+                    ctx.fillStyle = '#E67E22';
+                    ctx.font = 'bold 14px monospace';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('\u2738', brickX + BRICK_WIDTH / 2, brickY + BRICK_HEIGHT / 2);
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'alphabetic';
+                    ctx.fillStyle = ROW_COLORS[r];
+                }
             }
         }
 
