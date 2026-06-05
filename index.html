@@ -96,6 +96,7 @@ import {
 
 import { state, resetBallsState, resetBricksState, resetFullState } from './src/state.js';
 import { keys, initInput } from './src/input.js';
+import { spawnPowerUp, activateEffect, applyBallSpeedMagnitude, initPowerups } from './src/powerups.js';
 
 // Bridge: game-core.js is still loaded as a non-module script (step 1 shim)
 // and sets window.GameCore. We alias it here for use in this module.
@@ -133,120 +134,8 @@ const GameCore = window.GameCore;
         document.getElementById('scoreDisplay').textContent = state.score;
     }
 
-    // Spawn a falling capsule centred on a destroyed brick.
-    // Uses brick grid coordinates (row, col) to compute world-space origin.
-    function spawnPowerUp(row, col, type) {
-        const brickX = BRICK_OFFSET_X + col * (BRICK_WIDTH  + BRICK_GAP);
-        const brickY = BRICK_OFFSET_Y + row * (BRICK_HEIGHT + BRICK_GAP);
-        const capsuleX = brickX + (BRICK_WIDTH  - POWERUP_SIZE) / 2;
-        const capsuleY = brickY + (BRICK_HEIGHT - POWERUP_SIZE) / 2;
-        state.activePowerUps.push({
-            x: capsuleX,
-            y: capsuleY,
-            type: type,
-            color: POWERUP_COLORS[type],
-            label: POWERUP_LABELS[type],
-            size: POWERUP_SIZE
-        });
-    }
 
-    // Activate (or extend) a timed effect for a given power-up type.
-    // CR-01: collecting the same type while the effect is already active
-    // ADDS the duration to the remaining time (capped at duration * 3) and
-    // does NOT re-apply the magnitude (no speed compounding). On first
-    // collection, the effect starts fresh and the magnitude is applied.
-    function activateEffect(type) {
-        // Instant / single-use effects — handle before any timed-effect logic
-        // (these types have no entry in POWERUP_DURATIONS; skipping early would
-        //  produce duration=undefined -> NaN in activeEffects).
-        if (type === 'extralife') {
-            state.lives += 1; // no cap — AC updated by PO
-            updateHUD();
-            return;
-        }
-        if (type === 'sticky') {
-            state.stickyActive = true; // arm the sticky — triggers on next paddle contact
-            return;
-        }
-        if (type === 'multiball') {
-            // Single-use (no POWERUP_DURATIONS entry): spawn clones from the
-            // first ball, capped at MAX_BALLS (AC-06).
-            const newBalls = GameCore.spawnExtraBalls(state.balls[0], MULTIBALL_COUNT, MULTIBALL_SPREAD_DEG, state.currentSpeedMag);
-            state.balls.push(...newBalls);
-            if (state.balls.length > MAX_BALLS) state.balls.splice(MAX_BALLS); // AC-06
-            return;
-        }
 
-        const duration    = POWERUP_DURATIONS[type];
-        const maxDuration = duration * 3; // CR-01 cap
-
-        // AC-07: opposite paddle-size effect cancels the current one. The size
-        // is reset to PADDLE_WIDTH here so the new multiplier (applied below on
-        // first collection) starts from the base width, not a stacked one.
-        if (type === 'wide' && state.activeEffects['small']) {
-            delete state.activeEffects['small'];
-            state.currentPaddleWidth = PADDLE_WIDTH;
-        } else if (type === 'small' && state.activeEffects['wide']) {
-            delete state.activeEffects['wide'];
-            state.currentPaddleWidth = PADDLE_WIDTH;
-        }
-
-        if (state.activeEffects[type]) {
-            // Stack: extend remaining time, cap at 3x, do NOT re-apply magnitude.
-            state.activeEffects[type].remainingMs = Math.min(
-                state.activeEffects[type].remainingMs + duration,
-                maxDuration
-            );
-            state.activeEffects[type].totalMs = maxDuration;
-            return; // effect already applied — no speed/size change
-        }
-
-        // First collection: start fresh.
-        state.activeEffects[type] = { remainingMs: duration, totalMs: duration };
-
-        // Penetration power-up (US-13): on first collection only, set the
-        // pierce counter on every ball (AC-05: independent per-ball counter).
-        // CR-01 stacking returns early above, so the counter is never re-set —
-        // only the duration extends.
-        if (type === 'penetration') {
-            state.balls.forEach(ball => { ball.penetration = PENETRATION_COUNT; });
-        }
-
-        // Speed power-ups (US-10): apply magnitude change on first activation
-        // only. Direction is preserved (AC-03) by renormalising the existing
-        // velocity vector. Effect lands on the same frame as collection (AC-05).
-        if (type === 'fast' || type === 'slow') {
-            const multiplier = (type === 'fast') ? SPEED_FAST_MULT : SPEED_SLOW_MULT;
-            state.currentSpeedMag = GameCore.computeSpeedEffect(BALL_SPEED_MAG, multiplier);
-            applyBallSpeedMagnitude(state.currentSpeedMag);
-        }
-
-        // Paddle size power-ups (US-11): apply width change on first activation
-        // only. PADDLE_WIDTH is never mutated (AC-05).
-        else if (type === 'wide' || type === 'small') {
-            const mult = (type === 'wide') ? PADDLE_WIDE_MULT : PADDLE_SMALL_MULT;
-            state.currentPaddleWidth = PADDLE_WIDTH * mult;
-            // AC-03: recentre the paddle on its current position, clamp in canvas
-            state.paddleX = state.paddleX + (PADDLE_WIDTH - state.currentPaddleWidth) / 2;
-            // AC-04: never let the resized paddle leave the canvas
-            state.paddleX = Math.max(0, Math.min(CANVAS_WIDTH - state.currentPaddleWidth, state.paddleX));
-        }
-
-        // Sticky (US-14) and extralife (US-15) are handled by early return above.
-
-    }
-
-    // Renormalise the ball velocity vector to the requested magnitude while
-    // preserving its direction. Used by US-10 speed effects on apply / expire.
-    function applyBallSpeedMagnitude(newMag) {
-        for (const ball of state.balls) {
-            const currentMag = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
-            if (currentMag === 0) continue; // stationary (e.g. stuck) — nothing to scale
-            const scale = newMag / currentMag;
-            ball.vx *= scale;
-            ball.vy *= scale;
-        }
-    }
 
     // Release a glued ball (US-14). Computes the release velocity with the same
     // GameCore.computePaddleBounce used for normal bounces, evaluated at the
@@ -728,7 +617,8 @@ const GameCore = window.GameCore;
 
     // ============================================================
     // GAME LOOP - update + draw, driven by requestAnimationFrame
-    // ============================================================
+    // ===============
+
     let lastTime = 0;
 
     function gameLoop(timestamp) {
@@ -744,7 +634,7 @@ const GameCore = window.GameCore;
     // ============================================================
     // BOOT
     // ============================================================
-    // Register input listeners — callbacks provided to avoid circular imports
+    initPowerups(GameCore, updateHUD);
     initInput(canvas, { resetGame, releaseStickyBall });
     updateHUD();
     requestAnimationFrame(gameLoop);
