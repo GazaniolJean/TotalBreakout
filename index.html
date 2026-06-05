@@ -95,6 +95,7 @@ import {
 } from './src/constants.js';
 
 import { state, resetBallsState, resetBricksState, resetFullState } from './src/state.js';
+import { keys, initInput } from './src/input.js';
 
 // Bridge: game-core.js is still loaded as a non-module script (step 1 shim)
 // and sets window.GameCore. We alias it here for use in this module.
@@ -115,91 +116,7 @@ const GameCore = window.GameCore;
     // ============================================================
     // INPUT - keyboard, mouse and touch move the paddle
     // ============================================================
-
-    // --- Keyboard: track pressed keys so movement is continuous while held ---
-    const keys = {};
-
-    // R4: single helper to release every glued ball — removes the 3x duplicated
-    // `balls.filter(b => b.stuck).forEach(...)` snippet from the event listeners.
-    function releaseAllStuckBalls() {
-        state.balls.forEach(ball => { if (ball.stuck) releaseStickyBall(ball); });
-    }
-
-    window.addEventListener('keydown', (e) => {
-        keys[e.key.toLowerCase()] = true;
-        // AC-03: any game key releases stuck balls, using the existing listener.
-        if (state.balls.some(b => b.stuck) && state.gameState === 'playing') {
-            releaseAllStuckBalls();
-            return;
-        }
-        // Start the game on any key (except F1-F12 and dead keys) from the start screen
-        if (state.gameState === 'start' && !e.key.startsWith('F') && e.key !== 'Dead') {
-            state.gameState = 'playing';
-            return;
-        }
-        // Restart the game on Space when game over
-        if (e.key === ' ' && (state.gameState === 'gameover' || state.gameState === 'victory')) {
-            resetGame();
-        }
-    });
-
-    window.addEventListener('keyup', (e) => {
-        keys[e.key.toLowerCase()] = false;
-    });
-
-    // --- Mouse click: start game from start screen ---
-    canvas.addEventListener('mousedown', () => {
-        if (state.balls.some(b => b.stuck) && state.gameState === 'playing') { releaseAllStuckBalls(); return; }
-        if (state.gameState === 'start') {
-            state.gameState = 'playing';
-        }
-    });
-
-    // --- Mouse: centre paddle on cursor position ---
-    canvas.addEventListener('mousemove', (e) => {
-        const rect  = canvas.getBoundingClientRect();
-        // Account for CSS scaling: map client coords back to canvas coords
-        const scaleX = CANVAS_WIDTH / rect.width;
-        const clientX = (e.clientX - rect.left) * scaleX;
-        state.paddleX = clientX - state.currentPaddleWidth / 2;
-        // Clamp paddle inside canvas
-        state.paddleX = Math.max(0, Math.min(CANVAS_WIDTH - state.currentPaddleWidth, state.paddleX));
-    });
-
-    // --- Touch: drag paddle relative to initial touch position ---
-    let touchStartX  = 0;
-    let paddleStartX = 0;
-
-    canvas.addEventListener('touchstart', (e) => {
-        // Start game on touch from start screen
-        if (state.gameState === 'start') {
-            state.gameState = 'playing';
-            return;
-        }
-        // Restart on touch when game is over
-        if (state.gameState === 'gameover' || state.gameState === 'victory') {
-            resetGame();
-            return;
-        }
-        // AC-03: a tap releases stuck balls.
-        if (state.balls.some(b => b.stuck)) { releaseAllStuckBalls(); return; }
-        const touch  = e.touches[0];
-        touchStartX  = touch.clientX;
-        paddleStartX = state.paddleX;
-    });
-
-    canvas.addEventListener('touchmove', (e) => {
-        // preventDefault stops the page from scrolling while playing
-        e.preventDefault();
-        const touch = e.touches[0];
-        state.paddleX = paddleStartX + (touch.clientX - touchStartX);
-        state.paddleX = Math.max(0, Math.min(CANVAS_WIDTH - state.currentPaddleWidth, state.paddleX));
-    }, { passive: false }); // { passive: false } is required for preventDefault to work
-
-    canvas.addEventListener('touchend', () => {
-        touchStartX  = 0;
-        paddleStartX = 0;
-    });
+    // Listeners registered in BOOT via initInput() (see src/input.js).
 
     // ============================================================
     // HELPERS
@@ -807,6 +724,8 @@ const GameCore = window.GameCore;
         drawOverlay();
     }
 
+    // ====
+
     // ============================================================
     // GAME LOOP - update + draw, driven by requestAnimationFrame
     // ============================================================
@@ -816,7 +735,6 @@ const GameCore = window.GameCore;
         if (!lastTime) lastTime = timestamp;
         let deltaTime = timestamp - lastTime;
         lastTime = timestamp;
-        // Clamp deltaTime to avoid huge jumps after a tab loses focus.
         if (deltaTime > 50) deltaTime = 50;
         update(deltaTime);
         draw();
@@ -826,6 +744,8 @@ const GameCore = window.GameCore;
     // ============================================================
     // BOOT
     // ============================================================
+    // Register input listeners — callbacks provided to avoid circular imports
+    initInput(canvas, { resetGame, releaseStickyBall });
     updateHUD();
     requestAnimationFrame(gameLoop);
 
