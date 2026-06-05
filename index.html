@@ -97,6 +97,7 @@ import {
 import { state, resetBallsState, resetBricksState, resetFullState } from './src/state.js';
 import { keys, initInput } from './src/input.js';
 import { spawnPowerUp, activateEffect, applyBallSpeedMagnitude, initPowerups } from './src/powerups.js';
+import { draw, initDraw } from './src/draw.js';
 
 // Bridge: game-core.js is still loaded as a non-module script (step 1 shim)
 // and sets window.GameCore. We alias it here for use in this module.
@@ -404,222 +405,11 @@ const GameCore = window.GameCore;
     }
 
     // ============================================================
-    // DRAW - pure rendering; no game-state mutations (R6 decomposition)
-    // ============================================================
-    function drawBricks() {
-        for (let r = 0; r < BRICK_ROWS; r++) {
-            ctx.fillStyle = ROW_COLORS[r];
-            for (let c = 0; c < BRICK_COLS; c++) {
-                if (!state.bricks[r][c]) continue;
-
-                const brickX = BRICK_OFFSET_X + c * (BRICK_WIDTH  + BRICK_GAP);
-                const brickY = BRICK_OFFSET_Y + r * (BRICK_HEIGHT + BRICK_GAP);
-
-                ctx.fillRect(brickX, brickY, BRICK_WIDTH, BRICK_HEIGHT);
-
-                // US-16: draw explosive marker (AC-02)
-                if (state.brickTypes[r][c] === 'explosive') {
-                    ctx.fillStyle = '#E67E22';
-                    ctx.font = 'bold 14px monospace';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText('✸', brickX + BRICK_WIDTH / 2, brickY + BRICK_HEIGHT / 2);
-                    ctx.textAlign = 'left';
-                    ctx.textBaseline = 'alphabetic';
-                    ctx.fillStyle = ROW_COLORS[r];
-                }
-            }
-        }
-    }
-
-    function drawPaddle() {
-        ctx.fillStyle = '#ecf0f1';
-        ctx.fillRect(state.paddleX, PADDLE_Y, state.currentPaddleWidth, PADDLE_HEIGHT);
-    }
-
-    function drawBalls() {
-        for (const ball of state.balls) {
-            ctx.beginPath();
-            ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
-            ctx.fillStyle = '#ffffff';
-            ctx.fill();
-            ctx.closePath();
-
-            if (ball.stuck) {
-                ctx.beginPath();
-                ctx.arc(ball.x, ball.y, BALL_RADIUS + 4, 0, Math.PI * 2);
-                ctx.strokeStyle = '#FD79A8';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                ctx.closePath();
-                ctx.lineWidth = 1;
-            }
-
-            // US-13: violet ring while the ball can pierce bricks.
-            if (ball.penetration > 0) {
-                ctx.beginPath();
-                ctx.arc(ball.x, ball.y, BALL_RADIUS + 4, 0, Math.PI * 2);
-                ctx.strokeStyle = '#A29BFE';
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                ctx.closePath();
-                ctx.lineWidth = 1;
-            }
-        }
-    }
-
-    function drawCapsules() {
-        // Coloured square + centred single-letter label. Colours come from
-        // POWERUP_COLORS so each type stays visually distinct on the dark bg.
-        for (const capsule of state.activePowerUps) {
-            ctx.fillStyle = capsule.color;
-            ctx.fillRect(capsule.x, capsule.y, capsule.size, capsule.size);
-
-            ctx.fillStyle = '#000000';
-            ctx.font = 'bold 14px monospace';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(capsule.label, capsule.x + capsule.size / 2, capsule.y + capsule.size / 2);
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'alphabetic';
-        }
-    }
-
-    function drawEffectHUD() {
-        // One small label per active effect, stacked at the bottom of the canvas.
-        const activeEffectKeys = Object.keys(state.activeEffects);
-        if (activeEffectKeys.length === 0) return;
-        ctx.font = '14px monospace';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'alphabetic';
-        const lineHeight = 18;
-        const baseY = CANVAS_HEIGHT - 8 - (activeEffectKeys.length - 1) * lineHeight;
-        for (let i = 0; i < activeEffectKeys.length; i++) {
-            const type = activeEffectKeys[i];
-            const effect = state.activeEffects[type];
-            const secondsLeft = Math.ceil(effect.remainingMs / 1000);
-            ctx.fillStyle = POWERUP_COLORS[type] || '#ffffff';
-            ctx.fillText(type.toUpperCase() + ' ' + secondsLeft + 's', 8, baseY + i * lineHeight);
-        }
-    }
-
-    function drawOverlay() {
-        // --- Start screen overlay ---
-        if (state.gameState === 'start') {
-            // Semi-transparent dark veil over the game background
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-
-            // Vertical layout anchored to canvas centre
-            const cx = CANVAS_WIDTH  / 2;
-            const cy = CANVAS_HEIGHT / 2;
-
-            // Title
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 52px monospace';
-            ctx.fillText('BREAKOUT', cx, cy - 90);
-
-            // Subtitle
-            ctx.fillStyle = '#aaaaaa';
-            ctx.font = '20px monospace';
-            ctx.fillText('Casse toutes les briques !', cx, cy - 48);
-
-            // Controls section
-            ctx.fillStyle = '#cccccc';
-            ctx.font = '18px monospace';
-            ctx.fillText('Clavier : Q / D  ou  ← →', cx, cy + 8);
-            ctx.fillText('Souris : deplace la raquette', cx, cy + 36);
-            ctx.fillText('Mobile : glisser', cx, cy + 64);
-
-            // Start instruction
-            ctx.fillStyle = '#f1c40f';
-            ctx.font = '18px monospace';
-            ctx.fillText('Appuie sur ESPACE ou clique pour commencer', cx, cy + 112);
-
-            // Reset alignment to defaults
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'alphabetic';
-        }
-
-        // --- Game Over overlay ---
-        if (state.gameState === 'gameover') {
-            // Semi-transparent black veil
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-            // "GAME OVER" title
-            ctx.fillStyle = '#e74c3c';
-            ctx.font = 'bold 48px monospace';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 60);
-
-            // Score line
-            ctx.fillStyle = '#ffffff';
-            ctx.font = '28px monospace';
-            ctx.fillText('Score : ' + state.score, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
-
-            // Replay instruction
-            ctx.fillStyle = '#aaaaaa';
-            ctx.font = '18px monospace';
-            ctx.fillText('Appuie sur ESPACE pour rejouer', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 50);
-
-            // Reset alignment to defaults
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'alphabetic';
-        } else if (state.gameState === 'victory') {
-            // Semi-transparent green overlay
-            ctx.fillStyle = 'rgba(0, 40, 0, 0.7)';
-            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-
-            ctx.fillStyle = '#2ecc71';
-            ctx.font = 'bold 48px monospace';
-            ctx.fillText('YOU WIN !', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 50);
-
-            ctx.fillStyle = '#ffffff';
-            ctx.font = '28px monospace';
-            ctx.fillText('Score : ' + state.score, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
-
-            ctx.fillStyle = '#aaaaaa';
-            ctx.font = '18px monospace';
-            ctx.fillText('Appuie sur ESPACE pour rejouer', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 60);
-
-            // Reset alignment to defaults
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'alphabetic';
-        }
-    }
-
-    function draw() {
-        // Clear canvas each frame
-        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-        // Canvas background
-        ctx.fillStyle = '#0d0d1a';
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-        drawBricks();
-        drawPaddle();
-        drawBalls();
-
-        drawCapsules();
-        drawEffectHUD();
-        drawOverlay();
-    }
-
-    // ====
-
-    // ============================================================
     // GAME LOOP - update + draw, driven by requestAnimationFrame
     // ===============
 
     let lastTime = 0;
+
 
     function gameLoop(timestamp) {
         if (!lastTime) lastTime = timestamp;
@@ -634,6 +424,7 @@ const GameCore = window.GameCore;
     // ============================================================
     // BOOT
     // ============================================================
+    initDraw(ctx);
     initPowerups(GameCore, updateHUD);
     initInput(canvas, { resetGame, releaseStickyBall });
     updateHUD();
