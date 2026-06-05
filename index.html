@@ -75,122 +75,28 @@
     </div>
 
     <script src="game-core.js"></script>
-    <script>
-    // ============================================================
-    // CONSTANTS - all magic numbers live here, nowhere else
-    // ============================================================
-    const CANVAS_WIDTH   = 800;
-    const CANVAS_HEIGHT  = 600;
+    <script type="module">
+import {
+    CANVAS_WIDTH, CANVAS_HEIGHT,
+    BALL_RADIUS, BALL_SPEED_X, BALL_SPEED_Y, BALL_SPEED_MAG,
+    PADDLE_WIDTH, PADDLE_HEIGHT, PADDLE_Y, MAX_BOUNCE_ANGLE,
+    KEY_LEFT, KEY_RIGHT, PADDLE_SPEED,
+    BRICK_ROWS, BRICK_COLS, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP,
+    BRICK_OFFSET_Y, BRICK_OFFSET_X, ROW_COLORS, ROW_POINTS,
+    MAX_LIVES,
+    POWERUP_DROP_CHANCE, EXTRA_LIFE_DROP_CHANCE, EXPLOSIVE_BRICK_CHANCE,
+    POWERUP_FALL_SPEED, POWERUP_SIZE,
+    SPEED_FAST_MULT, SPEED_SLOW_MULT, SPEED_DURATION,
+    PADDLE_WIDE_MULT, PADDLE_SMALL_MULT, PADDLE_SIZE_DURATION,
+    STICKY_DURATION,
+    MULTIBALL_COUNT, MULTIBALL_SPREAD_DEG, MAX_BALLS,
+    PENETRATION_COUNT, PENETRATION_DURATION,
+    POWERUP_DEFS, POWERUP_COLORS, POWERUP_LABELS, POWERUP_DURATIONS, POWERUP_TYPES,
+} from './src/constants.js';
 
-    const BALL_RADIUS    = 8;
-    const BALL_SPEED_X   = 4;   // initial horizontal speed (px / frame at 60 fps)
-    const BALL_SPEED_Y   = 4;   // initial vertical   speed (px / frame at 60 fps)
-    // Magnitude used to renormalise velocity after a paddle hit
-    const BALL_SPEED_MAG = Math.sqrt(BALL_SPEED_X ** 2 + BALL_SPEED_Y ** 2);
-
-    const PADDLE_WIDTH   = 100;
-    const PADDLE_HEIGHT  = 12;
-    const PADDLE_Y       = 560; // 40 px above bottom
-
-    // Maximum horizontal component after a paddle bounce (pixels / frame)
-    const MAX_BOUNCE_ANGLE = 5;
-
-    // Keyboard controls (AZERTY French layout primary, arrow keys as fallback)
-    const KEY_LEFT  = 'q';
-    const KEY_RIGHT = 'd';
-    const PADDLE_SPEED = 6; // pixels per frame at 60 fps
-
-    const BRICK_ROWS     = 5;
-    const BRICK_COLS     = 10;
-    const BRICK_WIDTH    = 70;
-    const BRICK_HEIGHT   = 20;
-    const BRICK_GAP      = 4;   // horizontal AND vertical gap between bricks
-    const BRICK_OFFSET_Y = 60;  // y of the first brick row
-
-    // Verify the grid fits horizontally:
-    // 10 * 70 + 9 * 4 = 700 + 36 = 736 px - leaves (800-736)/2 = 32 px each side
-    const BRICK_OFFSET_X = (CANVAS_WIDTH - (BRICK_COLS * BRICK_WIDTH + (BRICK_COLS - 1) * BRICK_GAP)) / 2; // = 32
-
-    // One colour per row (top -> bottom)
-    const ROW_COLORS = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#3498db'];
-
-    const ROW_POINTS = [50, 40, 30, 20, 10]; // top row = most points
-
-    // Lives
-    const MAX_LIVES = 3;
-
-    // ---- Power-ups (US-09 infrastructure) ----
-    // Probability that a destroyed brick spawns a capsule.
-    const POWERUP_DROP_CHANCE = 0.20;
-    // Separate drop chance for the extra-life capsule — rarer than standard power-ups (AC-01).
-    const EXTRA_LIFE_DROP_CHANCE = 0.05;
-    // US-16: probability that a generated brick is explosive (AC-01).
-    const EXPLOSIVE_BRICK_CHANCE = 0.08;
-    // Vertical fall speed of capsules (px / frame at 60 fps), independent of ball speed.
-    const POWERUP_FALL_SPEED  = 3;
-    // Capsule square side length, used for both AABB collision and rendering.
-    const POWERUP_SIZE        = 20;
-
-    // ---- Speed power-ups (US-10) ----
-    // Magnitude multipliers applied to the ball velocity vector while the
-    // effect is active. Direction is preserved (AC-03); only magnitude changes.
-    const SPEED_FAST_MULT  = 1.6;
-    const SPEED_SLOW_MULT  = 0.55;
-    // Shared duration in ms for both fast and slow capsules (AC-01, AC-02).
-    const SPEED_DURATION   = 8000;
-
-    // ---- Paddle size power-ups (US-11) ----
-    // Width multipliers applied to the base PADDLE_WIDTH while the effect is
-    // active. PADDLE_WIDTH itself is never mutated (AC-05).
-    const PADDLE_WIDE_MULT       = 1.7;
-    const PADDLE_SMALL_MULT      = 0.5;
-    // Shared duration in ms for both wide and small capsules (AC-01, AC-02).
-    const PADDLE_SIZE_DURATION   = 10000; // ms
-
-    // ---- Sticky power-up (US-14) ----
-    // Auto-release timer in ms: a glued ball is automatically released after
-    // this delay if the player does not move (AC-05). Single-use, not timed via
-    // POWERUP_DURATIONS — the sticky is consumed on first catch-release (AC-04).
-    const STICKY_DURATION = 5000; // ms
-
-    // ---- Multiball power-up (US-12) ----
-    const MULTIBALL_COUNT      = 3;    // total balls after collect (AC-01)
-    const MULTIBALL_SPREAD_DEG = 20;   // spread angle for clones (AC-02)
-    const MAX_BALLS            = 10;   // safety cap (AC-06)
-
-    // ---- Penetration power-up (US-13) ----
-    const PENETRATION_COUNT    = 3;    // bricks pierced per ball (AC-01)
-    const PENETRATION_DURATION = 7000; // ms (AC-01)
-
-    // ============================================================
-    // POWER-UP DEFINITIONS (R1) — single source of truth.
-    // One entry per power-up type describing colour, label, duration and kind.
-    //   kind: 'timed'   -> has a POWERUP_DURATIONS entry, decremented each frame.
-    //         'instant' -> single-use; no duration (duration: null).
-    // The legacy maps (POWERUP_COLORS / LABELS / DURATIONS / TYPES) are derived
-    // from this object so all existing call-sites keep working unchanged.
-    // ============================================================
-    const POWERUP_DEFS = {
-        fast:        { color: '#FF6B35', label: '▲',  duration: SPEED_DURATION,       kind: 'timed'   },
-        slow:        { color: '#74B9FF', label: '▼',  duration: SPEED_DURATION,       kind: 'timed'   },
-        wide:        { color: '#00B894', label: '◀▶', duration: PADDLE_SIZE_DURATION, kind: 'timed' },
-        small:       { color: '#E17055', label: '▶◀', duration: PADDLE_SIZE_DURATION, kind: 'timed' },
-        penetration: { color: '#A29BFE', label: '⬡',  duration: PENETRATION_DURATION, kind: 'timed'   },
-        sticky:      { color: '#FD79A8', label: '●',  duration: null,  kind: 'instant'  },
-        extralife:   { color: '#55EFC4', label: '♥',  duration: null,  kind: 'instant'  },
-        multiball:   { color: '#FDCB6E', label: '✦',  duration: null,  kind: 'instant'  },
-        test:        { color: '#FFFFFF', label: 'T',       duration: 5000,  kind: 'timed'    },
-    };
-
-    // Derived maps (replace the old standalone POWERUP_COLORS / LABELS / DURATIONS).
-    const POWERUP_COLORS    = Object.fromEntries(Object.entries(POWERUP_DEFS).map(([k, v]) => [k, v.color]));
-    const POWERUP_LABELS    = Object.fromEntries(Object.entries(POWERUP_DEFS).map(([k, v]) => [k, v.label]));
-    const POWERUP_DURATIONS = Object.fromEntries(Object.entries(POWERUP_DEFS).filter(([, v]) => v.duration).map(([k, v]) => [k, v.duration]));
-
-    // Real power-up types available in the random drop pool (US-10).
-    // 'test' is intentionally kept out of the pool: it was a US-09 placeholder
-    // and remains supported in POWERUP_DEFS only for tooling.
-    const POWERUP_TYPES     = ['fast', 'slow', 'wide', 'small', 'sticky', 'multiball', 'penetration'];
+// Bridge: game-core.js is still loaded as a non-module script (step 1 shim)
+// and sets window.GameCore. We alias it here for use in this module.
+const GameCore = window.GameCore;
 
     // ============================================================
     // CANVAS SETUP
