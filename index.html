@@ -156,6 +156,10 @@
     const MULTIBALL_SPREAD_DEG = 20;   // spread angle for clones (AC-02)
     const MAX_BALLS            = 10;   // safety cap (AC-06)
 
+    // ---- Penetration power-up (US-13) ----
+    const PENETRATION_COUNT    = 3;    // bricks pierced per ball (AC-01)
+    const PENETRATION_DURATION = 7000; // ms (AC-01)
+
     // Per-type colour palette (extended in US-10..US-16). Placeholder 'test' here.
     const POWERUP_COLORS = {
         test: '#FFFFFF',
@@ -165,7 +169,8 @@
         small: '#E17055',
         sticky: '#FD79A8',
         extralife: '#55EFC4',
-        multiball: '#FDCB6E'
+        multiball: '#FDCB6E',
+        penetration: '#A29BFE'
     };
     // Per-type short label drawn inside the capsule.
     const POWERUP_LABELS = {
@@ -176,7 +181,8 @@
         small: '▶◀',
         sticky: '●',
         extralife: '♥',
-        multiball: '✦'
+        multiball: '✦',
+        penetration: '⬡'
     };
     // Per-type effect duration in milliseconds (real types arrive in later US).
     const POWERUP_DURATIONS = {
@@ -184,13 +190,14 @@
         fast: SPEED_DURATION,
         slow: SPEED_DURATION,
         wide: PADDLE_SIZE_DURATION,
-        small: PADDLE_SIZE_DURATION
+        small: PADDLE_SIZE_DURATION,
+        penetration: PENETRATION_DURATION
     };
 
     // Real power-up types available in the random drop pool (US-10).
     // 'test' is intentionally kept out of the pool: it was a US-09 placeholder
     // and remains supported in POWERUP_COLORS/LABELS/DURATIONS only for tooling.
-    const POWERUP_TYPES = ['fast', 'slow', 'wide', 'small', 'sticky', 'multiball'];
+    const POWERUP_TYPES = ['fast', 'slow', 'wide', 'small', 'sticky', 'multiball', 'penetration'];
 
     // ============================================================
     // CANVAS SETUP
@@ -213,7 +220,8 @@
         vy: -BALL_SPEED_Y,
         stuck: false,
         stickyTimer: 0,
-        stickyHitOffset: 0
+        stickyHitOffset: 0,
+        penetration: 0
     }];
     // Current ball speed magnitude — driven by US-10 speed power-ups.
     // Defaults to BALL_SPEED_MAG and is restored to that value at effect
@@ -355,7 +363,8 @@
             vy: -BALL_SPEED_Y,
             stuck: false,
             stickyTimer: 0,
-            stickyHitOffset: 0
+            stickyHitOffset: 0,
+            penetration: 0
         }];
     }
 
@@ -429,6 +438,14 @@
 
         // First collection: start fresh.
         activeEffects[type] = { remainingMs: duration, totalMs: duration };
+
+        // Penetration power-up (US-13): on first collection only, set the
+        // pierce counter on every ball (AC-05: independent per-ball counter).
+        // CR-01 stacking returns early above, so the counter is never re-set —
+        // only the duration extends.
+        if (type === 'penetration') {
+            balls.forEach(ball => { ball.penetration = PENETRATION_COUNT; });
+        }
 
         // Speed power-ups (US-10): apply magnitude change on first activation
         // only. Direction is preserved (AC-03) by renormalising the existing
@@ -574,26 +591,56 @@
                 }
             }
 
-            // Brick collision
-            const brickResult = GameCore.computeBrickCollision(ball.x, ball.y, ball.vx, ball.vy, BALL_RADIUS, bricks, BRICK_OFFSET_X, BRICK_OFFSET_Y, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP);
-            if (brickResult !== null) {
-                const key = `${brickResult.hitRow},${brickResult.hitCol}`;
-                if (!destroyedThisFrame.has(key) && bricks[brickResult.hitRow][brickResult.hitCol]) {
-                    destroyedThisFrame.add(key);
-                    bricks[brickResult.hitRow][brickResult.hitCol] = false;
-                    score += ROW_POINTS[brickResult.hitRow];
+            // Brick collision — penetration-aware (US-13)
+            let brickHits = null;
+            if (ball.penetration > 0) {
+                brickHits = GameCore.computeBrickCollisionPenetrating(
+                    ball.x, ball.y, ball.vx, ball.vy, BALL_RADIUS,
+                    bricks, BRICK_OFFSET_X, BRICK_OFFSET_Y, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP,
+                    ball.penetration
+                );
+            } else {
+                const standard = GameCore.computeBrickCollision(
+                    ball.x, ball.y, ball.vx, ball.vy, BALL_RADIUS,
+                    bricks, BRICK_OFFSET_X, BRICK_OFFSET_Y, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP
+                );
+                if (standard) {
+                    brickHits = {
+                        vx: standard.vx, vy: standard.vy,
+                        x: standard.x,   y: standard.y,
+                        destroyedBricks: [{ row: standard.hitRow, col: standard.hitCol }],
+                        remainingPenetration: 0
+                    };
+                }
+            }
+
+            if (brickHits !== null) {
+                let anyDestroyed = false;
+                for (const { row, col } of brickHits.destroyedBricks) {
+                    const key = `${row},${col}`;
+                    if (!destroyedThisFrame.has(key) && bricks[row][col]) {
+                        destroyedThisFrame.add(key);
+                        bricks[row][col] = false;
+                        score += ROW_POINTS[row];
+                        anyDestroyed = true;
+                        if (Math.random() < POWERUP_DROP_CHANCE) {
+                            const randomType = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+                            spawnPowerUp(row, col, randomType);
+                        }
+                        if (Math.random() < EXTRA_LIFE_DROP_CHANCE) {
+                            spawnPowerUp(row, col, 'extralife');
+                        }
+                    }
+                }
+                if (anyDestroyed) {
                     updateHUD();
-                    if (Math.random() < POWERUP_DROP_CHANCE) {
-                        const randomType = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
-                        spawnPowerUp(brickResult.hitRow, brickResult.hitCol, randomType);
-                    }
-                    if (Math.random() < EXTRA_LIFE_DROP_CHANCE) {
-                        spawnPowerUp(brickResult.hitRow, brickResult.hitCol, 'extralife');
-                    }
+                    ball.penetration = brickHits.remainingPenetration; // AC-02 decrement
                     if (GameCore.checkVictory(bricks)) gameState = 'victory';
                 }
-                ball.vx = brickResult.vx; ball.vy = brickResult.vy;
-                ball.x = brickResult.x; ball.y = brickResult.y;
+                // Apply returned ball state: unchanged trajectory when piercing
+                // (AC-02), reflected bounce when not (AC-03).
+                ball.vx = brickHits.vx; ball.vy = brickHits.vy;
+                ball.x  = brickHits.x;  ball.y  = brickHits.y;
             }
         }
 
@@ -655,6 +702,10 @@
                     currentPaddleWidth = PADDLE_WIDTH;
                     paddleX = Math.max(0, Math.min(CANVAS_WIDTH - currentPaddleWidth, paddleX));
                 }
+                // US-13 AC-06: on expiry, clear the pierce counter on every ball.
+                if (type === 'penetration') {
+                    balls.forEach(ball => { ball.penetration = 0; });
+                }
             }
         }
     }
@@ -699,6 +750,17 @@
                 ctx.beginPath();
                 ctx.arc(ball.x, ball.y, BALL_RADIUS + 4, 0, Math.PI * 2);
                 ctx.strokeStyle = '#FD79A8';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.closePath();
+                ctx.lineWidth = 1;
+            }
+
+            // US-13: violet ring while the ball can pierce bricks.
+            if (ball.penetration > 0) {
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, BALL_RADIUS + 4, 0, Math.PI * 2);
+                ctx.strokeStyle = '#A29BFE';
                 ctx.lineWidth = 2;
                 ctx.stroke();
                 ctx.closePath();
@@ -824,22 +886,26 @@
 
             ctx.fillStyle = '#aaaaaa';
             ctx.font = '18px monospace';
-            ctx.fillText('Appuie sur ESPACE pour rejouer', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 55);
+            ctx.fillText('Appuie sur ESPACE pour rejouer', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 60);
 
+            // Reset alignment to defaults
             ctx.textAlign = 'left';
             ctx.textBaseline = 'alphabetic';
         }
     }
 
     // ============================================================
-    // GAME LOOP - requestAnimationFrame only; no setInterval/setTimeout
+    // GAME LOOP - update + draw, driven by requestAnimationFrame
     // ============================================================
     let lastTime = 0;
 
     function gameLoop(timestamp) {
-        // Cap deltaTime to 50 ms to avoid large jumps after tab-switch / lag spike
-        const deltaTime = Math.min(timestamp - lastTime, 50);
+        if (!lastTime) lastTime = timestamp;
+        let deltaTime = timestamp - lastTime;
         lastTime = timestamp;
+
+        // Clamp deltaTime to avoid huge jumps after a tab loses focus.
+        if (deltaTime > 50) deltaTime = 50;
 
         update(deltaTime);
         draw();
@@ -847,11 +913,12 @@
         requestAnimationFrame(gameLoop);
     }
 
-    // Initialise HUD before first frame
+    // ============================================================
+    // BOOT
+    // ============================================================
     updateHUD();
-
-    // Kick off the loop
     requestAnimationFrame(gameLoop);
+
     </script>
 </body>
 </html>
