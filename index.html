@@ -74,7 +74,7 @@
       <canvas id="gameCanvas"></canvas>
     </div>
 
-    <script src="game-core.js"></script>
+    <script src="src/game-core.js"></script>
     <script type="module">
 import {
     CANVAS_WIDTH, CANVAS_HEIGHT,
@@ -94,6 +94,8 @@ import {
     POWERUP_DEFS, POWERUP_COLORS, POWERUP_LABELS, POWERUP_DURATIONS, POWERUP_TYPES,
 } from './src/constants.js';
 
+import { state, resetBallsState, resetBricksState, resetFullState } from './src/state.js';
+
 // Bridge: game-core.js is still loaded as a non-module script (step 1 shim)
 // and sets window.GameCore. We alias it here for use in this module.
 const GameCore = window.GameCore;
@@ -110,66 +112,6 @@ const GameCore = window.GameCore;
     // GAME STATE
     // ============================================================
 
-    // Ball(s) — US-12 multiball refactor: a list of independent ball objects.
-    // Each ball: { x, y, vx, vy, stuck, stickyTimer, stickyHitOffset }
-    let balls = [{
-        x: CANVAS_WIDTH / 2,
-        y: 420, // initial position above paddle
-        vx: BALL_SPEED_X,
-        vy: -BALL_SPEED_Y,
-        stuck: false,
-        stickyTimer: 0,
-        stickyHitOffset: 0,
-        penetration: 0
-    }];
-    // Current ball speed magnitude — driven by US-10 speed power-ups.
-    // Defaults to BALL_SPEED_MAG and is restored to that value at effect
-    // expiration (AC-04: no cumulative drift).
-    let currentSpeedMag = BALL_SPEED_MAG;
-
-    // Paddle - centred horizontally
-    let paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
-    // Current paddle width — driven by US-11 size power-ups. Defaults to
-    // PADDLE_WIDTH and is restored to that value at effect expiration (AC-05).
-    let currentPaddleWidth = PADDLE_WIDTH;
-
-    // Lives & score
-    let lives = MAX_LIVES;
-    let score = 0;
-
-    // Game state machine: 'playing' | 'gameover' | 'victory' (US-07) | 'start' (US-08)
-    let gameState = 'start';
-
-    // Bricks - 2-D array [row][col], value: true = alive, false = destroyed.
-    // R2: declared with `let` so resetGame() can reassign it directly.
-    let bricks = GameCore.buildBricks(BRICK_ROWS, BRICK_COLS);
-
-    // US-16: brickTypes[r][c]: 'normal' | 'explosive' | 'destroyed' — generated
-    // alongside bricks. Kept in sync with bricks on destruction (R7).
-    let brickTypes = [];
-    function generateBrickTypes() {
-        brickTypes = [];
-        for (let r = 0; r < BRICK_ROWS; r++) {
-            brickTypes[r] = [];
-            for (let c = 0; c < BRICK_COLS; c++) {
-                brickTypes[r][c] = Math.random() < EXPLOSIVE_BRICK_CHANCE ? 'explosive' : 'normal';
-            }
-        }
-    }
-    generateBrickTypes();
-
-    // Power-up state (US-09)
-    // activePowerUps: capsules currently falling toward the paddle.
-    // Each entry: { x, y, type, color, label, size }
-    let activePowerUps = [];
-    // activeEffects: timed effects currently in play, keyed by power-up type.
-    // Each entry: { remainingMs, totalMs }
-    let activeEffects = {};
-
-    // Sticky power-up state (US-14). Per-ball sticky state now lives on each
-    // ball object; only the global "armed" flag remains here (US-12).
-    let stickyActive    = false; // true while the sticky power-up is ready to catch the ball
-
     // ============================================================
     // INPUT - keyboard, mouse and touch move the paddle
     // ============================================================
@@ -180,23 +122,23 @@ const GameCore = window.GameCore;
     // R4: single helper to release every glued ball — removes the 3x duplicated
     // `balls.filter(b => b.stuck).forEach(...)` snippet from the event listeners.
     function releaseAllStuckBalls() {
-        balls.forEach(ball => { if (ball.stuck) releaseStickyBall(ball); });
+        state.balls.forEach(ball => { if (ball.stuck) releaseStickyBall(ball); });
     }
 
     window.addEventListener('keydown', (e) => {
         keys[e.key.toLowerCase()] = true;
         // AC-03: any game key releases stuck balls, using the existing listener.
-        if (balls.some(b => b.stuck) && gameState === 'playing') {
+        if (state.balls.some(b => b.stuck) && state.gameState === 'playing') {
             releaseAllStuckBalls();
             return;
         }
         // Start the game on any key (except F1-F12 and dead keys) from the start screen
-        if (gameState === 'start' && !e.key.startsWith('F') && e.key !== 'Dead') {
-            gameState = 'playing';
+        if (state.gameState === 'start' && !e.key.startsWith('F') && e.key !== 'Dead') {
+            state.gameState = 'playing';
             return;
         }
         // Restart the game on Space when game over
-        if (e.key === ' ' && (gameState === 'gameover' || gameState === 'victory')) {
+        if (e.key === ' ' && (state.gameState === 'gameover' || state.gameState === 'victory')) {
             resetGame();
         }
     });
@@ -207,9 +149,9 @@ const GameCore = window.GameCore;
 
     // --- Mouse click: start game from start screen ---
     canvas.addEventListener('mousedown', () => {
-        if (balls.some(b => b.stuck) && gameState === 'playing') { releaseAllStuckBalls(); return; }
-        if (gameState === 'start') {
-            gameState = 'playing';
+        if (state.balls.some(b => b.stuck) && state.gameState === 'playing') { releaseAllStuckBalls(); return; }
+        if (state.gameState === 'start') {
+            state.gameState = 'playing';
         }
     });
 
@@ -219,9 +161,9 @@ const GameCore = window.GameCore;
         // Account for CSS scaling: map client coords back to canvas coords
         const scaleX = CANVAS_WIDTH / rect.width;
         const clientX = (e.clientX - rect.left) * scaleX;
-        paddleX = clientX - currentPaddleWidth / 2;
+        state.paddleX = clientX - state.currentPaddleWidth / 2;
         // Clamp paddle inside canvas
-        paddleX = Math.max(0, Math.min(CANVAS_WIDTH - currentPaddleWidth, paddleX));
+        state.paddleX = Math.max(0, Math.min(CANVAS_WIDTH - state.currentPaddleWidth, state.paddleX));
     });
 
     // --- Touch: drag paddle relative to initial touch position ---
@@ -230,28 +172,28 @@ const GameCore = window.GameCore;
 
     canvas.addEventListener('touchstart', (e) => {
         // Start game on touch from start screen
-        if (gameState === 'start') {
-            gameState = 'playing';
+        if (state.gameState === 'start') {
+            state.gameState = 'playing';
             return;
         }
         // Restart on touch when game is over
-        if (gameState === 'gameover' || gameState === 'victory') {
+        if (state.gameState === 'gameover' || state.gameState === 'victory') {
             resetGame();
             return;
         }
         // AC-03: a tap releases stuck balls.
-        if (balls.some(b => b.stuck)) { releaseAllStuckBalls(); return; }
+        if (state.balls.some(b => b.stuck)) { releaseAllStuckBalls(); return; }
         const touch  = e.touches[0];
         touchStartX  = touch.clientX;
-        paddleStartX = paddleX;
+        paddleStartX = state.paddleX;
     });
 
     canvas.addEventListener('touchmove', (e) => {
         // preventDefault stops the page from scrolling while playing
         e.preventDefault();
         const touch = e.touches[0];
-        paddleX = paddleStartX + (touch.clientX - touchStartX);
-        paddleX = Math.max(0, Math.min(CANVAS_WIDTH - currentPaddleWidth, paddleX));
+        state.paddleX = paddleStartX + (touch.clientX - touchStartX);
+        state.paddleX = Math.max(0, Math.min(CANVAS_WIDTH - state.currentPaddleWidth, state.paddleX));
     }, { passive: false }); // { passive: false } is required for preventDefault to work
 
     canvas.addEventListener('touchend', () => {
@@ -268,24 +210,10 @@ const GameCore = window.GameCore;
     // ============================================================
     function updateHUD() {
         // Show up to 3 dots; if lives > 3 append a numeric count
-        const dots = '●'.repeat(Math.min(lives, 3));
-        const extra = lives > 3 ? ' +' + (lives - 3) : '';
+        const dots = '●'.repeat(Math.min(state.lives, 3));
+        const extra = state.lives > 3 ? ' +' + (state.lives - 3) : '';
         document.getElementById('livesDisplay').textContent = dots + extra;
-        document.getElementById('scoreDisplay').textContent = score;
-    }
-
-    // Reset to a single ball at the starting position
-    function resetBalls() {
-        balls = [{
-            x: CANVAS_WIDTH / 2,
-            y: 420,
-            vx: BALL_SPEED_X,
-            vy: -BALL_SPEED_Y,
-            stuck: false,
-            stickyTimer: 0,
-            stickyHitOffset: 0,
-            penetration: 0
-        }];
+        document.getElementById('scoreDisplay').textContent = state.score;
     }
 
     // Spawn a falling capsule centred on a destroyed brick.
@@ -295,7 +223,7 @@ const GameCore = window.GameCore;
         const brickY = BRICK_OFFSET_Y + row * (BRICK_HEIGHT + BRICK_GAP);
         const capsuleX = brickX + (BRICK_WIDTH  - POWERUP_SIZE) / 2;
         const capsuleY = brickY + (BRICK_HEIGHT - POWERUP_SIZE) / 2;
-        activePowerUps.push({
+        state.activePowerUps.push({
             x: capsuleX,
             y: capsuleY,
             type: type,
@@ -315,20 +243,20 @@ const GameCore = window.GameCore;
         // (these types have no entry in POWERUP_DURATIONS; skipping early would
         //  produce duration=undefined -> NaN in activeEffects).
         if (type === 'extralife') {
-            lives += 1; // no cap — AC updated by PO
+            state.lives += 1; // no cap — AC updated by PO
             updateHUD();
             return;
         }
         if (type === 'sticky') {
-            stickyActive = true; // arm the sticky — triggers on next paddle contact
+            state.stickyActive = true; // arm the sticky — triggers on next paddle contact
             return;
         }
         if (type === 'multiball') {
             // Single-use (no POWERUP_DURATIONS entry): spawn clones from the
             // first ball, capped at MAX_BALLS (AC-06).
-            const newBalls = GameCore.spawnExtraBalls(balls[0], MULTIBALL_COUNT, MULTIBALL_SPREAD_DEG, currentSpeedMag);
-            balls.push(...newBalls);
-            if (balls.length > MAX_BALLS) balls.splice(MAX_BALLS); // AC-06
+            const newBalls = GameCore.spawnExtraBalls(state.balls[0], MULTIBALL_COUNT, MULTIBALL_SPREAD_DEG, state.currentSpeedMag);
+            state.balls.push(...newBalls);
+            if (state.balls.length > MAX_BALLS) state.balls.splice(MAX_BALLS); // AC-06
             return;
         }
 
@@ -338,33 +266,33 @@ const GameCore = window.GameCore;
         // AC-07: opposite paddle-size effect cancels the current one. The size
         // is reset to PADDLE_WIDTH here so the new multiplier (applied below on
         // first collection) starts from the base width, not a stacked one.
-        if (type === 'wide' && activeEffects['small']) {
-            delete activeEffects['small'];
-            currentPaddleWidth = PADDLE_WIDTH;
-        } else if (type === 'small' && activeEffects['wide']) {
-            delete activeEffects['wide'];
-            currentPaddleWidth = PADDLE_WIDTH;
+        if (type === 'wide' && state.activeEffects['small']) {
+            delete state.activeEffects['small'];
+            state.currentPaddleWidth = PADDLE_WIDTH;
+        } else if (type === 'small' && state.activeEffects['wide']) {
+            delete state.activeEffects['wide'];
+            state.currentPaddleWidth = PADDLE_WIDTH;
         }
 
-        if (activeEffects[type]) {
+        if (state.activeEffects[type]) {
             // Stack: extend remaining time, cap at 3x, do NOT re-apply magnitude.
-            activeEffects[type].remainingMs = Math.min(
-                activeEffects[type].remainingMs + duration,
+            state.activeEffects[type].remainingMs = Math.min(
+                state.activeEffects[type].remainingMs + duration,
                 maxDuration
             );
-            activeEffects[type].totalMs = maxDuration;
+            state.activeEffects[type].totalMs = maxDuration;
             return; // effect already applied — no speed/size change
         }
 
         // First collection: start fresh.
-        activeEffects[type] = { remainingMs: duration, totalMs: duration };
+        state.activeEffects[type] = { remainingMs: duration, totalMs: duration };
 
         // Penetration power-up (US-13): on first collection only, set the
         // pierce counter on every ball (AC-05: independent per-ball counter).
         // CR-01 stacking returns early above, so the counter is never re-set —
         // only the duration extends.
         if (type === 'penetration') {
-            balls.forEach(ball => { ball.penetration = PENETRATION_COUNT; });
+            state.balls.forEach(ball => { ball.penetration = PENETRATION_COUNT; });
         }
 
         // Speed power-ups (US-10): apply magnitude change on first activation
@@ -372,19 +300,19 @@ const GameCore = window.GameCore;
         // velocity vector. Effect lands on the same frame as collection (AC-05).
         if (type === 'fast' || type === 'slow') {
             const multiplier = (type === 'fast') ? SPEED_FAST_MULT : SPEED_SLOW_MULT;
-            currentSpeedMag = GameCore.computeSpeedEffect(BALL_SPEED_MAG, multiplier);
-            applyBallSpeedMagnitude(currentSpeedMag);
+            state.currentSpeedMag = GameCore.computeSpeedEffect(BALL_SPEED_MAG, multiplier);
+            applyBallSpeedMagnitude(state.currentSpeedMag);
         }
 
         // Paddle size power-ups (US-11): apply width change on first activation
         // only. PADDLE_WIDTH is never mutated (AC-05).
         else if (type === 'wide' || type === 'small') {
             const mult = (type === 'wide') ? PADDLE_WIDE_MULT : PADDLE_SMALL_MULT;
-            currentPaddleWidth = PADDLE_WIDTH * mult;
+            state.currentPaddleWidth = PADDLE_WIDTH * mult;
             // AC-03: recentre the paddle on its current position, clamp in canvas
-            paddleX = paddleX + (PADDLE_WIDTH - currentPaddleWidth) / 2;
+            state.paddleX = state.paddleX + (PADDLE_WIDTH - state.currentPaddleWidth) / 2;
             // AC-04: never let the resized paddle leave the canvas
-            paddleX = Math.max(0, Math.min(CANVAS_WIDTH - currentPaddleWidth, paddleX));
+            state.paddleX = Math.max(0, Math.min(CANVAS_WIDTH - state.currentPaddleWidth, state.paddleX));
         }
 
         // Sticky (US-14) and extralife (US-15) are handled by early return above.
@@ -394,7 +322,7 @@ const GameCore = window.GameCore;
     // Renormalise the ball velocity vector to the requested magnitude while
     // preserving its direction. Used by US-10 speed effects on apply / expire.
     function applyBallSpeedMagnitude(newMag) {
-        for (const ball of balls) {
+        for (const ball of state.balls) {
             const currentMag = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
             if (currentMag === 0) continue; // stationary (e.g. stuck) — nothing to scale
             const scale = newMag / currentMag;
@@ -409,8 +337,8 @@ const GameCore = window.GameCore;
     function releaseStickyBall(ball) {
         const releaseResult = GameCore.computePaddleBounce(
             ball.x, PADDLE_Y, 0, 1, BALL_RADIUS, // vy=1 to trigger the bounce guard
-            paddleX, PADDLE_Y, currentPaddleWidth, PADDLE_HEIGHT,
-            MAX_BOUNCE_ANGLE, currentSpeedMag
+            state.paddleX, PADDLE_Y, state.currentPaddleWidth, PADDLE_HEIGHT,
+            MAX_BOUNCE_ANGLE, state.currentSpeedMag
         );
         ball.vx      = releaseResult.vx;
         ball.vy      = releaseResult.vy;
@@ -421,23 +349,7 @@ const GameCore = window.GameCore;
 
     // Full game reset - called on restart after game over
     function resetGame() {
-        lives = MAX_LIVES;
-        score = 0;
-        resetBalls();
-        currentPaddleWidth = PADDLE_WIDTH;
-        paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
-        // R2: rebuild all bricks with a single reassignment (was a copy loop).
-        bricks = GameCore.buildBricks(BRICK_ROWS, BRICK_COLS);
-        generateBrickTypes(); // US-16 AC-07: regenerate explosive layout
-        // Clear in-flight power-ups and cancel any active effects (AC-09)
-        activePowerUps = [];
-        activeEffects  = {};
-        // Restore base ball speed magnitude (US-10 AC-04: no drift across runs).
-        currentSpeedMag = BALL_SPEED_MAG;
-        // US-14 AC-07: clear all sticky state on full reset (per-ball state is
-        // reset by resetBalls()).
-        stickyActive = false;
-        gameState = 'playing';
+        resetFullState();
         updateHUD();
     }
 
@@ -448,29 +360,29 @@ const GameCore = window.GameCore;
     // R5: keyboard-driven paddle movement + clamp.
     function updatePaddle(dt) {
         if (keys[KEY_LEFT] || keys['arrowleft']) {
-            paddleX -= PADDLE_SPEED * dt;
+            state.paddleX -= PADDLE_SPEED * dt;
         }
         if (keys[KEY_RIGHT] || keys['arrowright']) {
-            paddleX += PADDLE_SPEED * dt;
+            state.paddleX += PADDLE_SPEED * dt;
         }
         // Clamp paddle within canvas bounds (applied here, not in event handlers)
-        paddleX = Math.max(0, Math.min(CANVAS_WIDTH - currentPaddleWidth, paddleX));
+        state.paddleX = Math.max(0, Math.min(CANVAS_WIDTH - state.currentPaddleWidth, state.paddleX));
     }
 
     // R7: centralise brick destruction so bricks AND brickTypes stay in sync.
     // Marks the cell destroyed, awards points, and returns the points awarded
     // (caller decides on power-up drops / explosion chains).
     function handleBrickDestruction(row, col) {
-        bricks[row][col]     = false;
-        brickTypes[row][col] = 'destroyed'; // R7: avoid a stale 'explosive' read later
-        score += ROW_POINTS[row];
+        state.bricks[row][col]     = false;
+        state.brickTypes[row][col] = 'destroyed'; // R7: avoid a stale 'explosive' read later
+        state.score += ROW_POINTS[row];
     }
 
     // R5: move one ball, resolve wall / paddle / brick collisions.
     // Returns true if the ball survived this frame, false if it was lost (the
     // caller has already removed it from the array via splice).
     function updateBall(i, dt, deltaTime, destroyedThisFrame) {
-        const ball = balls[i];
+        const ball = state.balls[i];
 
         // Move ball
         ball.x += ball.vx * dt;
@@ -482,30 +394,30 @@ const GameCore = window.GameCore;
         ball.vx = wallResult.vx; ball.vy = wallResult.vy;
 
         if (wallResult.lost) {
-            balls.splice(i, 1); // remove this ball (AC-05)
+            state.balls.splice(i, 1); // remove this ball (AC-05)
             return false;
         }
 
         // Paddle collision (sticky-aware)
         if (ball.stuck) {
-            ball.x = GameCore.stickyBallX(paddleX, currentPaddleWidth, ball.stickyHitOffset);
+            ball.x = GameCore.stickyBallX(state.paddleX, state.currentPaddleWidth, ball.stickyHitOffset);
             ball.y = PADDLE_Y - BALL_RADIUS;
             ball.vx = 0; ball.vy = 0;
             ball.stickyTimer += deltaTime;
             if (ball.stickyTimer >= STICKY_DURATION) releaseStickyBall(ball);
         } else {
             const paddleResult = GameCore.computePaddleBounce(ball.x, ball.y, ball.vx, ball.vy, BALL_RADIUS,
-                paddleX, PADDLE_Y, currentPaddleWidth, PADDLE_HEIGHT, MAX_BOUNCE_ANGLE, currentSpeedMag);
+                state.paddleX, PADDLE_Y, state.currentPaddleWidth, PADDLE_HEIGHT, MAX_BOUNCE_ANGLE, state.currentSpeedMag);
             // R8: a real bounce occurred iff the ball was descending and the
             // paddle function flipped vy upward. Robust replacement for the old
             // `paddleResult.vy !== ball.vy` heuristic.
             const bounceOccurred = (ball.vy > 0) && (paddleResult.vy < 0);
-            if (stickyActive && bounceOccurred) {
+            if (state.stickyActive && bounceOccurred) {
                 ball.stuck = true;
-                stickyActive = false;
+                state.stickyActive = false;
                 ball.stickyTimer = 0;
-                ball.stickyHitOffset = ball.x - paddleX;
-                ball.x = GameCore.stickyBallX(paddleX, currentPaddleWidth, ball.stickyHitOffset);
+                ball.stickyHitOffset = ball.x - state.paddleX;
+                ball.x = GameCore.stickyBallX(state.paddleX, state.currentPaddleWidth, ball.stickyHitOffset);
                 ball.y = PADDLE_Y - BALL_RADIUS;
                 ball.vx = 0; ball.vy = 0;
             } else {
@@ -518,13 +430,13 @@ const GameCore = window.GameCore;
         if (ball.penetration > 0) {
             brickHits = GameCore.computeBrickCollisionPenetrating(
                 ball.x, ball.y, ball.vx, ball.vy, BALL_RADIUS,
-                bricks, BRICK_OFFSET_X, BRICK_OFFSET_Y, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP,
+                state.bricks, BRICK_OFFSET_X, BRICK_OFFSET_Y, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP,
                 ball.penetration
             );
         } else {
             const standard = GameCore.computeBrickCollision(
                 ball.x, ball.y, ball.vx, ball.vy, BALL_RADIUS,
-                bricks, BRICK_OFFSET_X, BRICK_OFFSET_Y, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP
+                state.bricks, BRICK_OFFSET_X, BRICK_OFFSET_Y, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP
             );
             if (standard) {
                 brickHits = {
@@ -540,20 +452,20 @@ const GameCore = window.GameCore;
             let anyDestroyed = false;
             for (const { row, col } of brickHits.destroyedBricks) {
                 const key = row + ',' + col;
-                if (!destroyedThisFrame.has(key) && bricks[row][col]) {
+                if (!destroyedThisFrame.has(key) && state.bricks[row][col]) {
                     destroyedThisFrame.add(key);
-                    const wasExplosive = brickTypes[row][col] === 'explosive';
+                    const wasExplosive = state.brickTypes[row][col] === 'explosive';
                     handleBrickDestruction(row, col); // R7: bricks + brickTypes + score
                     anyDestroyed = true;
 
                     // US-16: trigger explosion chain if this brick is explosive (AC-03, AC-04)
                     if (wasExplosive) {
                         const chainDestroyed = GameCore.computeExplosionChain(
-                            bricks, brickTypes, row, col, BRICK_ROWS, BRICK_COLS
+                            state.bricks, state.brickTypes, row, col, BRICK_ROWS, BRICK_COLS
                         );
                         for (const { row: cr, col: cc } of chainDestroyed) {
                             const chainKey = cr + ',' + cc;
-                            if (!destroyedThisFrame.has(chainKey) && bricks[cr][cc]) {
+                            if (!destroyedThisFrame.has(chainKey) && state.bricks[cr][cc]) {
                                 destroyedThisFrame.add(chainKey);
                                 handleBrickDestruction(cr, cc); // AC-05
                             }
@@ -572,7 +484,7 @@ const GameCore = window.GameCore;
             if (anyDestroyed) {
                 updateHUD();
                 ball.penetration = brickHits.remainingPenetration; // AC-02 decrement
-                if (GameCore.checkVictory(bricks)) gameState = 'victory';
+                if (GameCore.checkVictory(state.bricks)) state.gameState = 'victory';
             }
             // Apply returned ball state: unchanged trajectory when piercing
             // (AC-02), reflected bounce when not (AC-03).
@@ -586,46 +498,46 @@ const GameCore = window.GameCore;
     // R5: power-up capsules fall, get collected, or despawn off the bottom.
     function updatePowerUpCapsules(dt) {
         // Iterate backwards so splice() during the loop is safe.
-        for (let i = activePowerUps.length - 1; i >= 0; i--) {
-            const capsule = activePowerUps[i];
+        for (let i = state.activePowerUps.length - 1; i >= 0; i--) {
+            const capsule = state.activePowerUps[i];
             capsule.y += POWERUP_FALL_SPEED * dt;
 
             // Collection by paddle - delegated to pure GameCore function (AC-08)
-            if (GameCore.checkPowerUpCollection(capsule, paddleX, PADDLE_Y, currentPaddleWidth, PADDLE_HEIGHT)) {
+            if (GameCore.checkPowerUpCollection(capsule, state.paddleX, PADDLE_Y, state.currentPaddleWidth, PADDLE_HEIGHT)) {
                 activateEffect(capsule.type);
-                activePowerUps.splice(i, 1);
+                state.activePowerUps.splice(i, 1);
                 continue;
             }
 
             // Silent despawn when the capsule leaves the bottom of the canvas (AC-04)
             if (capsule.y > CANVAS_HEIGHT) {
-                activePowerUps.splice(i, 1);
+                state.activePowerUps.splice(i, 1);
             }
         }
     }
 
     // R5: decrement timed effects and run their expiry side-effects (AC-06).
     function updateTimedEffects(deltaTime) {
-        for (const type of Object.keys(activeEffects)) {
-            activeEffects[type].remainingMs -= deltaTime;
-            if (activeEffects[type].remainingMs <= 0) {
-                delete activeEffects[type];
+        for (const type of Object.keys(state.activeEffects)) {
+            state.activeEffects[type].remainingMs -= deltaTime;
+            if (state.activeEffects[type].remainingMs <= 0) {
+                delete state.activeEffects[type];
                 // US-10 AC-04: on expiry, restore the base magnitude exactly —
                 // no cumulative drift. Direction is preserved (AC-03) by
                 // renormalising the existing velocity vector.
                 if (type === 'fast' || type === 'slow') {
-                    currentSpeedMag = BALL_SPEED_MAG;
-                    applyBallSpeedMagnitude(currentSpeedMag);
+                    state.currentSpeedMag = BALL_SPEED_MAG;
+                    applyBallSpeedMagnitude(state.currentSpeedMag);
                 }
                 // US-11 AC-05: on expiry, restore the base paddle width exactly
                 // — no cumulative drift. Re-clamp so the shrink/grow stays valid.
                 if (type === 'wide' || type === 'small') {
-                    currentPaddleWidth = PADDLE_WIDTH;
-                    paddleX = Math.max(0, Math.min(CANVAS_WIDTH - currentPaddleWidth, paddleX));
+                    state.currentPaddleWidth = PADDLE_WIDTH;
+                    state.paddleX = Math.max(0, Math.min(CANVAS_WIDTH - state.currentPaddleWidth, state.paddleX));
                 }
                 // US-13 AC-06: on expiry, clear the pierce counter on every ball.
                 if (type === 'penetration') {
-                    balls.forEach(ball => { ball.penetration = 0; });
+                    state.balls.forEach(ball => { ball.penetration = 0; });
                 }
             }
         }
@@ -636,26 +548,26 @@ const GameCore = window.GameCore;
     // fast/slow effects are now cleared and the base magnitude restored on
     // every life loss, not just on full reset.
     function handleLifeLost() {
-        lives -= 1;
+        state.lives -= 1;
         updateHUD();
         // Clear speed and paddle-size effects on every life loss.
-        ['fast', 'slow', 'wide', 'small'].forEach(t => delete activeEffects[t]);
-        currentSpeedMag    = BALL_SPEED_MAG; // R3: was never reset when lives > 0
-        currentPaddleWidth = PADDLE_WIDTH;
-        stickyActive       = false;
-        activePowerUps     = [];
-        if (lives === 0) {
-            activeEffects = {};
-            gameState = 'gameover';
+        ['fast', 'slow', 'wide', 'small'].forEach(t => delete state.activeEffects[t]);
+        state.currentSpeedMag    = BALL_SPEED_MAG; // R3: was never reset when lives > 0
+        state.currentPaddleWidth = PADDLE_WIDTH;
+        state.stickyActive       = false;
+        state.activePowerUps     = [];
+        if (state.lives === 0) {
+            state.activeEffects = {};
+            state.gameState = 'gameover';
         } else {
-            resetBalls();
-            paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
+            resetBallsState();
+            state.paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
         }
     }
 
     function update(deltaTime) {
         // Freeze the game when not in 'playing' state
-        if (gameState !== 'playing') return;
+        if (state.gameState !== 'playing') return;
 
         // Scale factor: normalise deltaTime to a 60 fps baseline (16.667 ms/frame).
         const dt = deltaTime / (1000 / 60);
@@ -671,12 +583,12 @@ const GameCore = window.GameCore;
         // Track bricks destroyed this frame to prevent double-destruction (AC-04)
         const destroyedThisFrame = new Set();
 
-        for (let i = balls.length - 1; i >= 0; i--) {
+        for (let i = state.balls.length - 1; i >= 0; i--) {
             updateBall(i, dt, deltaTime, destroyedThisFrame);
         }
 
         // Life lost only when ALL balls are gone (AC-05)
-        if (balls.length === 0) {
+        if (state.balls.length === 0) {
             handleLifeLost();
             return;
         }
@@ -692,7 +604,7 @@ const GameCore = window.GameCore;
         for (let r = 0; r < BRICK_ROWS; r++) {
             ctx.fillStyle = ROW_COLORS[r];
             for (let c = 0; c < BRICK_COLS; c++) {
-                if (!bricks[r][c]) continue;
+                if (!state.bricks[r][c]) continue;
 
                 const brickX = BRICK_OFFSET_X + c * (BRICK_WIDTH  + BRICK_GAP);
                 const brickY = BRICK_OFFSET_Y + r * (BRICK_HEIGHT + BRICK_GAP);
@@ -700,7 +612,7 @@ const GameCore = window.GameCore;
                 ctx.fillRect(brickX, brickY, BRICK_WIDTH, BRICK_HEIGHT);
 
                 // US-16: draw explosive marker (AC-02)
-                if (brickTypes[r][c] === 'explosive') {
+                if (state.brickTypes[r][c] === 'explosive') {
                     ctx.fillStyle = '#E67E22';
                     ctx.font = 'bold 14px monospace';
                     ctx.textAlign = 'center';
@@ -716,11 +628,11 @@ const GameCore = window.GameCore;
 
     function drawPaddle() {
         ctx.fillStyle = '#ecf0f1';
-        ctx.fillRect(paddleX, PADDLE_Y, currentPaddleWidth, PADDLE_HEIGHT);
+        ctx.fillRect(state.paddleX, PADDLE_Y, state.currentPaddleWidth, PADDLE_HEIGHT);
     }
 
     function drawBalls() {
-        for (const ball of balls) {
+        for (const ball of state.balls) {
             ctx.beginPath();
             ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
             ctx.fillStyle = '#ffffff';
@@ -753,7 +665,7 @@ const GameCore = window.GameCore;
     function drawCapsules() {
         // Coloured square + centred single-letter label. Colours come from
         // POWERUP_COLORS so each type stays visually distinct on the dark bg.
-        for (const capsule of activePowerUps) {
+        for (const capsule of state.activePowerUps) {
             ctx.fillStyle = capsule.color;
             ctx.fillRect(capsule.x, capsule.y, capsule.size, capsule.size);
 
@@ -769,7 +681,7 @@ const GameCore = window.GameCore;
 
     function drawEffectHUD() {
         // One small label per active effect, stacked at the bottom of the canvas.
-        const activeEffectKeys = Object.keys(activeEffects);
+        const activeEffectKeys = Object.keys(state.activeEffects);
         if (activeEffectKeys.length === 0) return;
         ctx.font = '14px monospace';
         ctx.textAlign = 'left';
@@ -778,7 +690,7 @@ const GameCore = window.GameCore;
         const baseY = CANVAS_HEIGHT - 8 - (activeEffectKeys.length - 1) * lineHeight;
         for (let i = 0; i < activeEffectKeys.length; i++) {
             const type = activeEffectKeys[i];
-            const effect = activeEffects[type];
+            const effect = state.activeEffects[type];
             const secondsLeft = Math.ceil(effect.remainingMs / 1000);
             ctx.fillStyle = POWERUP_COLORS[type] || '#ffffff';
             ctx.fillText(type.toUpperCase() + ' ' + secondsLeft + 's', 8, baseY + i * lineHeight);
@@ -787,7 +699,7 @@ const GameCore = window.GameCore;
 
     function drawOverlay() {
         // --- Start screen overlay ---
-        if (gameState === 'start') {
+        if (state.gameState === 'start') {
             // Semi-transparent dark veil over the game background
             ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
             ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -827,7 +739,7 @@ const GameCore = window.GameCore;
         }
 
         // --- Game Over overlay ---
-        if (gameState === 'gameover') {
+        if (state.gameState === 'gameover') {
             // Semi-transparent black veil
             ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
             ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -842,7 +754,7 @@ const GameCore = window.GameCore;
             // Score line
             ctx.fillStyle = '#ffffff';
             ctx.font = '28px monospace';
-            ctx.fillText('Score : ' + score, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+            ctx.fillText('Score : ' + state.score, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
 
             // Replay instruction
             ctx.fillStyle = '#aaaaaa';
@@ -852,7 +764,7 @@ const GameCore = window.GameCore;
             // Reset alignment to defaults
             ctx.textAlign = 'left';
             ctx.textBaseline = 'alphabetic';
-        } else if (gameState === 'victory') {
+        } else if (state.gameState === 'victory') {
             // Semi-transparent green overlay
             ctx.fillStyle = 'rgba(0, 40, 0, 0.7)';
             ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -866,7 +778,7 @@ const GameCore = window.GameCore;
 
             ctx.fillStyle = '#ffffff';
             ctx.font = '28px monospace';
-            ctx.fillText('Score : ' + score, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
+            ctx.fillText('Score : ' + state.score, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
 
             ctx.fillStyle = '#aaaaaa';
             ctx.font = '18px monospace';
@@ -889,6 +801,7 @@ const GameCore = window.GameCore;
         drawBricks();
         drawPaddle();
         drawBalls();
+
         drawCapsules();
         drawEffectHUD();
         drawOverlay();
@@ -903,13 +816,10 @@ const GameCore = window.GameCore;
         if (!lastTime) lastTime = timestamp;
         let deltaTime = timestamp - lastTime;
         lastTime = timestamp;
-
         // Clamp deltaTime to avoid huge jumps after a tab loses focus.
         if (deltaTime > 50) deltaTime = 50;
-
         update(deltaTime);
         draw();
-
         requestAnimationFrame(gameLoop);
     }
 
