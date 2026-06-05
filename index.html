@@ -162,44 +162,35 @@
     const PENETRATION_COUNT    = 3;    // bricks pierced per ball (AC-01)
     const PENETRATION_DURATION = 7000; // ms (AC-01)
 
-    // Per-type colour palette (extended in US-10..US-16). Placeholder 'test' here.
-    const POWERUP_COLORS = {
-        test: '#FFFFFF',
-        fast: '#FF6B35',
-        slow: '#74B9FF',
-        wide: '#00B894',
-        small: '#E17055',
-        sticky: '#FD79A8',
-        extralife: '#55EFC4',
-        multiball: '#FDCB6E',
-        penetration: '#A29BFE'
+    // ============================================================
+    // POWER-UP DEFINITIONS (R1) — single source of truth.
+    // One entry per power-up type describing colour, label, duration and kind.
+    //   kind: 'timed'   -> has a POWERUP_DURATIONS entry, decremented each frame.
+    //         'instant' -> single-use; no duration (duration: null).
+    // The legacy maps (POWERUP_COLORS / LABELS / DURATIONS / TYPES) are derived
+    // from this object so all existing call-sites keep working unchanged.
+    // ============================================================
+    const POWERUP_DEFS = {
+        fast:        { color: '#FF6B35', label: '▲',  duration: SPEED_DURATION,       kind: 'timed'   },
+        slow:        { color: '#74B9FF', label: '▼',  duration: SPEED_DURATION,       kind: 'timed'   },
+        wide:        { color: '#00B894', label: '◀▶', duration: PADDLE_SIZE_DURATION, kind: 'timed' },
+        small:       { color: '#E17055', label: '▶◀', duration: PADDLE_SIZE_DURATION, kind: 'timed' },
+        penetration: { color: '#A29BFE', label: '⬡',  duration: PENETRATION_DURATION, kind: 'timed'   },
+        sticky:      { color: '#FD79A8', label: '●',  duration: null,  kind: 'instant'  },
+        extralife:   { color: '#55EFC4', label: '♥',  duration: null,  kind: 'instant'  },
+        multiball:   { color: '#FDCB6E', label: '✦',  duration: null,  kind: 'instant'  },
+        test:        { color: '#FFFFFF', label: 'T',       duration: 5000,  kind: 'timed'    },
     };
-    // Per-type short label drawn inside the capsule.
-    const POWERUP_LABELS = {
-        test: 'T',
-        fast: '▲',
-        slow: '▼',
-        wide: '◀▶',
-        small: '▶◀',
-        sticky: '●',
-        extralife: '♥',
-        multiball: '✦',
-        penetration: '⬡'
-    };
-    // Per-type effect duration in milliseconds (real types arrive in later US).
-    const POWERUP_DURATIONS = {
-        test: 5000,
-        fast: SPEED_DURATION,
-        slow: SPEED_DURATION,
-        wide: PADDLE_SIZE_DURATION,
-        small: PADDLE_SIZE_DURATION,
-        penetration: PENETRATION_DURATION
-    };
+
+    // Derived maps (replace the old standalone POWERUP_COLORS / LABELS / DURATIONS).
+    const POWERUP_COLORS    = Object.fromEntries(Object.entries(POWERUP_DEFS).map(([k, v]) => [k, v.color]));
+    const POWERUP_LABELS    = Object.fromEntries(Object.entries(POWERUP_DEFS).map(([k, v]) => [k, v.label]));
+    const POWERUP_DURATIONS = Object.fromEntries(Object.entries(POWERUP_DEFS).filter(([, v]) => v.duration).map(([k, v]) => [k, v.duration]));
 
     // Real power-up types available in the random drop pool (US-10).
     // 'test' is intentionally kept out of the pool: it was a US-09 placeholder
-    // and remains supported in POWERUP_COLORS/LABELS/DURATIONS only for tooling.
-    const POWERUP_TYPES = ['fast', 'slow', 'wide', 'small', 'sticky', 'multiball', 'penetration'];
+    // and remains supported in POWERUP_DEFS only for tooling.
+    const POWERUP_TYPES     = ['fast', 'slow', 'wide', 'small', 'sticky', 'multiball', 'penetration'];
 
     // ============================================================
     // CANVAS SETUP
@@ -243,10 +234,12 @@
     // Game state machine: 'playing' | 'gameover' | 'victory' (US-07) | 'start' (US-08)
     let gameState = 'start';
 
-    // Bricks - 2-D array [row][col], value: true = alive, false = destroyed
-    const bricks = GameCore.buildBricks(BRICK_ROWS, BRICK_COLS);
+    // Bricks - 2-D array [row][col], value: true = alive, false = destroyed.
+    // R2: declared with `let` so resetGame() can reassign it directly.
+    let bricks = GameCore.buildBricks(BRICK_ROWS, BRICK_COLS);
 
-    // US-16: brickTypes[r][c]: 'normal' | 'explosive' — generated alongside bricks.
+    // US-16: brickTypes[r][c]: 'normal' | 'explosive' | 'destroyed' — generated
+    // alongside bricks. Kept in sync with bricks on destruction (R7).
     let brickTypes = [];
     function generateBrickTypes() {
         brickTypes = [];
@@ -278,11 +271,17 @@
     // --- Keyboard: track pressed keys so movement is continuous while held ---
     const keys = {};
 
+    // R4: single helper to release every glued ball — removes the 3x duplicated
+    // `balls.filter(b => b.stuck).forEach(...)` snippet from the event listeners.
+    function releaseAllStuckBalls() {
+        balls.forEach(ball => { if (ball.stuck) releaseStickyBall(ball); });
+    }
+
     window.addEventListener('keydown', (e) => {
         keys[e.key.toLowerCase()] = true;
         // AC-03: any game key releases stuck balls, using the existing listener.
         if (balls.some(b => b.stuck) && gameState === 'playing') {
-            balls.filter(b => b.stuck).forEach(b => releaseStickyBall(b));
+            releaseAllStuckBalls();
             return;
         }
         // Start the game on any key (except F1-F12 and dead keys) from the start screen
@@ -302,7 +301,7 @@
 
     // --- Mouse click: start game from start screen ---
     canvas.addEventListener('mousedown', () => {
-        if (balls.some(b => b.stuck) && gameState === 'playing') { balls.filter(b => b.stuck).forEach(b => releaseStickyBall(b)); return; }
+        if (balls.some(b => b.stuck) && gameState === 'playing') { releaseAllStuckBalls(); return; }
         if (gameState === 'start') {
             gameState = 'playing';
         }
@@ -335,7 +334,7 @@
             return;
         }
         // AC-03: a tap releases stuck balls.
-        if (balls.some(b => b.stuck)) { balls.filter(b => b.stuck).forEach(b => releaseStickyBall(b)); return; }
+        if (balls.some(b => b.stuck)) { releaseAllStuckBalls(); return; }
         const touch  = e.touches[0];
         touchStartX  = touch.clientX;
         paddleStartX = paddleX;
@@ -408,7 +407,7 @@
     function activateEffect(type) {
         // Instant / single-use effects — handle before any timed-effect logic
         // (these types have no entry in POWERUP_DURATIONS; skipping early would
-        //  produce duration=undefined → NaN in activeEffects).
+        //  produce duration=undefined -> NaN in activeEffects).
         if (type === 'extralife') {
             lives += 1; // no cap — AC updated by PO
             updateHUD();
@@ -521,9 +520,8 @@
         resetBalls();
         currentPaddleWidth = PADDLE_WIDTH;
         paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
-        // Rebuild all bricks using GameCore helper
-        const freshBricks = GameCore.buildBricks(BRICK_ROWS, BRICK_COLS);
-        for (let r = 0; r < BRICK_ROWS; r++) bricks[r] = freshBricks[r];
+        // R2: rebuild all bricks with a single reassignment (was a copy loop).
+        bricks = GameCore.buildBricks(BRICK_ROWS, BRICK_COLS);
         generateBrickTypes(); // US-16 AC-07: regenerate explosive layout
         // Clear in-flight power-ups and cancel any active effects (AC-09)
         activePowerUps = [];
@@ -538,17 +536,11 @@
     }
 
     // ============================================================
-    // UPDATE - all game logic; no drawing here
+    // UPDATE - all game logic; no drawing here (R5 decomposition)
     // ============================================================
-    function update(deltaTime) {
-        // Freeze the game when not in 'playing' state
-        if (gameState !== 'playing') return;
 
-        // Scale factor: normalise deltaTime to a 60 fps baseline (16.667 ms/frame).
-        // Used consistently for both ball movement and paddle movement.
-        const dt = deltaTime / (1000 / 60);
-
-        // --- Keyboard paddle movement ---
+    // R5: keyboard-driven paddle movement + clamp.
+    function updatePaddle(dt) {
         if (keys[KEY_LEFT] || keys['arrowleft']) {
             paddleX -= PADDLE_SPEED * dt;
         }
@@ -557,147 +549,136 @@
         }
         // Clamp paddle within canvas bounds (applied here, not in event handlers)
         paddleX = Math.max(0, Math.min(CANVAS_WIDTH - currentPaddleWidth, paddleX));
+    }
 
-        // --- Per-ball update loop (US-12 multiball) ---
-        // NOTE on tunneling: AABB detection is sufficient at current speeds
-        // (BALL_SPEED_MAG ~ 5.66 px/frame vs BRICK_HEIGHT 20 px, BALL_RADIUS*2 16 px).
-        // With US-10 SPEED_FAST_MULT = 1.6 the peak per-frame magnitude reaches
-        // ~9.06 px, still below min(BRICK_HEIGHT, BALL_RADIUS*2) = 16 px.
+    // R7: centralise brick destruction so bricks AND brickTypes stay in sync.
+    // Marks the cell destroyed, awards points, and returns the points awarded
+    // (caller decides on power-up drops / explosion chains).
+    function handleBrickDestruction(row, col) {
+        bricks[row][col]     = false;
+        brickTypes[row][col] = 'destroyed'; // R7: avoid a stale 'explosive' read later
+        score += ROW_POINTS[row];
+    }
 
-        // Track bricks destroyed this frame to prevent double-destruction (AC-04)
-        const destroyedThisFrame = new Set();
+    // R5: move one ball, resolve wall / paddle / brick collisions.
+    // Returns true if the ball survived this frame, false if it was lost (the
+    // caller has already removed it from the array via splice).
+    function updateBall(i, dt, deltaTime, destroyedThisFrame) {
+        const ball = balls[i];
 
-        for (let i = balls.length - 1; i >= 0; i--) {
-            const ball = balls[i];
+        // Move ball
+        ball.x += ball.vx * dt;
+        ball.y += ball.vy * dt;
 
-            // Move ball
-            ball.x += ball.vx * dt;
-            ball.y += ball.vy * dt;
+        // Wall collisions
+        const wallResult = GameCore.computeWallCollisions(ball.x, ball.y, ball.vx, ball.vy, BALL_RADIUS, CANVAS_WIDTH, CANVAS_HEIGHT);
+        ball.x = wallResult.x; ball.y = wallResult.y;
+        ball.vx = wallResult.vx; ball.vy = wallResult.vy;
 
-            // Wall collisions
-            const wallResult = GameCore.computeWallCollisions(ball.x, ball.y, ball.vx, ball.vy, BALL_RADIUS, CANVAS_WIDTH, CANVAS_HEIGHT);
-            ball.x = wallResult.x; ball.y = wallResult.y;
-            ball.vx = wallResult.vx; ball.vy = wallResult.vy;
+        if (wallResult.lost) {
+            balls.splice(i, 1); // remove this ball (AC-05)
+            return false;
+        }
 
-            if (wallResult.lost) {
-                balls.splice(i, 1); // remove this ball (AC-05)
-                continue;
-            }
-
-            // Paddle collision (sticky-aware)
-            if (ball.stuck) {
+        // Paddle collision (sticky-aware)
+        if (ball.stuck) {
+            ball.x = GameCore.stickyBallX(paddleX, currentPaddleWidth, ball.stickyHitOffset);
+            ball.y = PADDLE_Y - BALL_RADIUS;
+            ball.vx = 0; ball.vy = 0;
+            ball.stickyTimer += deltaTime;
+            if (ball.stickyTimer >= STICKY_DURATION) releaseStickyBall(ball);
+        } else {
+            const paddleResult = GameCore.computePaddleBounce(ball.x, ball.y, ball.vx, ball.vy, BALL_RADIUS,
+                paddleX, PADDLE_Y, currentPaddleWidth, PADDLE_HEIGHT, MAX_BOUNCE_ANGLE, currentSpeedMag);
+            // R8: a real bounce occurred iff the ball was descending and the
+            // paddle function flipped vy upward. Robust replacement for the old
+            // `paddleResult.vy !== ball.vy` heuristic.
+            const bounceOccurred = (ball.vy > 0) && (paddleResult.vy < 0);
+            if (stickyActive && bounceOccurred) {
+                ball.stuck = true;
+                stickyActive = false;
+                ball.stickyTimer = 0;
+                ball.stickyHitOffset = ball.x - paddleX;
                 ball.x = GameCore.stickyBallX(paddleX, currentPaddleWidth, ball.stickyHitOffset);
                 ball.y = PADDLE_Y - BALL_RADIUS;
                 ball.vx = 0; ball.vy = 0;
-                ball.stickyTimer += deltaTime;
-                if (ball.stickyTimer >= STICKY_DURATION) releaseStickyBall(ball);
             } else {
-                const paddleResult = GameCore.computePaddleBounce(ball.x, ball.y, ball.vx, ball.vy, BALL_RADIUS,
-                    paddleX, PADDLE_Y, currentPaddleWidth, PADDLE_HEIGHT, MAX_BOUNCE_ANGLE, currentSpeedMag);
-                if (stickyActive && paddleResult.vy !== ball.vy) {
-                    ball.stuck = true;
-                    stickyActive = false;
-                    ball.stickyTimer = 0;
-                    ball.stickyHitOffset = ball.x - paddleX;
-                    ball.x = GameCore.stickyBallX(paddleX, currentPaddleWidth, ball.stickyHitOffset);
-                    ball.y = PADDLE_Y - BALL_RADIUS;
-                    ball.vx = 0; ball.vy = 0;
-                } else {
-                    ball.vx = paddleResult.vx; ball.vy = paddleResult.vy; ball.y = paddleResult.y;
-                }
+                ball.vx = paddleResult.vx; ball.vy = paddleResult.vy; ball.y = paddleResult.y;
             }
+        }
 
-            // Brick collision — penetration-aware (US-13)
-            let brickHits = null;
-            if (ball.penetration > 0) {
-                brickHits = GameCore.computeBrickCollisionPenetrating(
-                    ball.x, ball.y, ball.vx, ball.vy, BALL_RADIUS,
-                    bricks, BRICK_OFFSET_X, BRICK_OFFSET_Y, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP,
-                    ball.penetration
-                );
-            } else {
-                const standard = GameCore.computeBrickCollision(
-                    ball.x, ball.y, ball.vx, ball.vy, BALL_RADIUS,
-                    bricks, BRICK_OFFSET_X, BRICK_OFFSET_Y, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP
-                );
-                if (standard) {
-                    brickHits = {
-                        vx: standard.vx, vy: standard.vy,
-                        x: standard.x,   y: standard.y,
-                        destroyedBricks: [{ row: standard.hitRow, col: standard.hitCol }],
-                        remainingPenetration: 0
-                    };
-                }
+        // Brick collision — penetration-aware (US-13)
+        let brickHits = null;
+        if (ball.penetration > 0) {
+            brickHits = GameCore.computeBrickCollisionPenetrating(
+                ball.x, ball.y, ball.vx, ball.vy, BALL_RADIUS,
+                bricks, BRICK_OFFSET_X, BRICK_OFFSET_Y, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP,
+                ball.penetration
+            );
+        } else {
+            const standard = GameCore.computeBrickCollision(
+                ball.x, ball.y, ball.vx, ball.vy, BALL_RADIUS,
+                bricks, BRICK_OFFSET_X, BRICK_OFFSET_Y, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP
+            );
+            if (standard) {
+                brickHits = {
+                    vx: standard.vx, vy: standard.vy,
+                    x: standard.x,   y: standard.y,
+                    destroyedBricks: [{ row: standard.hitRow, col: standard.hitCol }],
+                    remainingPenetration: 0
+                };
             }
+        }
 
-            if (brickHits !== null) {
-                let anyDestroyed = false;
-                for (const { row, col } of brickHits.destroyedBricks) {
-                    const key = `${row},${col}`;
-                    if (!destroyedThisFrame.has(key) && bricks[row][col]) {
-                        destroyedThisFrame.add(key);
-                        bricks[row][col] = false;
-                        score += ROW_POINTS[row];
-                        anyDestroyed = true;
+        if (brickHits !== null) {
+            let anyDestroyed = false;
+            for (const { row, col } of brickHits.destroyedBricks) {
+                const key = row + ',' + col;
+                if (!destroyedThisFrame.has(key) && bricks[row][col]) {
+                    destroyedThisFrame.add(key);
+                    const wasExplosive = brickTypes[row][col] === 'explosive';
+                    handleBrickDestruction(row, col); // R7: bricks + brickTypes + score
+                    anyDestroyed = true;
 
-                        // US-16: trigger explosion chain if this brick is explosive (AC-03, AC-04)
-                        if (brickTypes[row][col] === 'explosive') {
-                            const chainDestroyed = GameCore.computeExplosionChain(
-                                bricks, brickTypes, row, col, BRICK_ROWS, BRICK_COLS
-                            );
-                            for (const { row: cr, col: cc } of chainDestroyed) {
-                                const chainKey = `${cr},${cc}`;
-                                if (!destroyedThisFrame.has(chainKey) && bricks[cr][cc]) {
-                                    destroyedThisFrame.add(chainKey);
-                                    bricks[cr][cc] = false;
-                                    score += ROW_POINTS[cr]; // AC-05
-                                }
+                    // US-16: trigger explosion chain if this brick is explosive (AC-03, AC-04)
+                    if (wasExplosive) {
+                        const chainDestroyed = GameCore.computeExplosionChain(
+                            bricks, brickTypes, row, col, BRICK_ROWS, BRICK_COLS
+                        );
+                        for (const { row: cr, col: cc } of chainDestroyed) {
+                            const chainKey = cr + ',' + cc;
+                            if (!destroyedThisFrame.has(chainKey) && bricks[cr][cc]) {
+                                destroyedThisFrame.add(chainKey);
+                                handleBrickDestruction(cr, cc); // AC-05
                             }
                         }
+                    }
 
-                        if (Math.random() < POWERUP_DROP_CHANCE) {
-                            const randomType = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
-                            spawnPowerUp(row, col, randomType);
-                        }
-                        if (Math.random() < EXTRA_LIFE_DROP_CHANCE) {
-                            spawnPowerUp(row, col, 'extralife');
-                        }
+                    if (Math.random() < POWERUP_DROP_CHANCE) {
+                        const randomType = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+                        spawnPowerUp(row, col, randomType);
+                    }
+                    if (Math.random() < EXTRA_LIFE_DROP_CHANCE) {
+                        spawnPowerUp(row, col, 'extralife');
                     }
                 }
-                if (anyDestroyed) {
-                    updateHUD();
-                    ball.penetration = brickHits.remainingPenetration; // AC-02 decrement
-                    if (GameCore.checkVictory(bricks)) gameState = 'victory';
-                }
-                // Apply returned ball state: unchanged trajectory when piercing
-                // (AC-02), reflected bounce when not (AC-03).
-                ball.vx = brickHits.vx; ball.vy = brickHits.vy;
-                ball.x  = brickHits.x;  ball.y  = brickHits.y;
             }
+            if (anyDestroyed) {
+                updateHUD();
+                ball.penetration = brickHits.remainingPenetration; // AC-02 decrement
+                if (GameCore.checkVictory(bricks)) gameState = 'victory';
+            }
+            // Apply returned ball state: unchanged trajectory when piercing
+            // (AC-02), reflected bounce when not (AC-03).
+            ball.vx = brickHits.vx; ball.vy = brickHits.vy;
+            ball.x  = brickHits.x;  ball.y  = brickHits.y;
         }
 
-        // Life lost only when ALL balls are gone (AC-05)
-        if (balls.length === 0) {
-            lives -= 1;
-            updateHUD();
-            if (lives === 0) {
-                gameState = 'gameover';
-                activePowerUps = [];
-                activeEffects = {};
-                currentPaddleWidth = PADDLE_WIDTH;
-                stickyActive = false;
-            } else {
-                resetBalls();
-                delete activeEffects['wide'];
-                delete activeEffects['small'];
-                currentPaddleWidth = PADDLE_WIDTH;
-                paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
-                stickyActive = false;
-            }
-            return;
-        }
+        return true;
+    }
 
-        // --- Power-up capsules: fall, collect, despawn (AC-02..AC-04, AC-07) ---
+    // R5: power-up capsules fall, get collected, or despawn off the bottom.
+    function updatePowerUpCapsules(dt) {
         // Iterate backwards so splice() during the loop is safe.
         for (let i = activePowerUps.length - 1; i >= 0; i--) {
             const capsule = activePowerUps[i];
@@ -715,8 +696,10 @@
                 activePowerUps.splice(i, 1);
             }
         }
+    }
 
-        // --- Timed effects: decrement and expire (AC-06) ---
+    // R5: decrement timed effects and run their expiry side-effects (AC-06).
+    function updateTimedEffects(deltaTime) {
         for (const type of Object.keys(activeEffects)) {
             activeEffects[type].remainingMs -= deltaTime;
             if (activeEffects[type].remainingMs <= 0) {
@@ -742,18 +725,64 @@
         }
     }
 
-    // ============================================================
-    // DRAW - pure rendering; no game-state mutations
-    // ============================================================
-    function draw() {
-        // Clear canvas each frame
-        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // R3 + R5: centralise the "all balls gone" bookkeeping. Replaces the two
+    // duplicated cleanup branches and fixes the currentSpeedMag bug (AC-04):
+    // fast/slow effects are now cleared and the base magnitude restored on
+    // every life loss, not just on full reset.
+    function handleLifeLost() {
+        lives -= 1;
+        updateHUD();
+        // Clear speed and paddle-size effects on every life loss.
+        ['fast', 'slow', 'wide', 'small'].forEach(t => delete activeEffects[t]);
+        currentSpeedMag    = BALL_SPEED_MAG; // R3: was never reset when lives > 0
+        currentPaddleWidth = PADDLE_WIDTH;
+        stickyActive       = false;
+        activePowerUps     = [];
+        if (lives === 0) {
+            activeEffects = {};
+            gameState = 'gameover';
+        } else {
+            resetBalls();
+            paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
+        }
+    }
 
-        // Canvas background
-        ctx.fillStyle = '#0d0d1a';
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    function update(deltaTime) {
+        // Freeze the game when not in 'playing' state
+        if (gameState !== 'playing') return;
 
-        // --- Draw bricks ---
+        // Scale factor: normalise deltaTime to a 60 fps baseline (16.667 ms/frame).
+        const dt = deltaTime / (1000 / 60);
+
+        updatePaddle(dt);
+
+        // --- Per-ball update loop (US-12 multiball) ---
+        // NOTE on tunneling: AABB detection is sufficient at current speeds
+        // (BALL_SPEED_MAG ~ 5.66 px/frame vs BRICK_HEIGHT 20 px, BALL_RADIUS*2 16 px).
+        // With US-10 SPEED_FAST_MULT = 1.6 the peak per-frame magnitude reaches
+        // ~9.06 px, still below min(BRICK_HEIGHT, BALL_RADIUS*2) = 16 px.
+
+        // Track bricks destroyed this frame to prevent double-destruction (AC-04)
+        const destroyedThisFrame = new Set();
+
+        for (let i = balls.length - 1; i >= 0; i--) {
+            updateBall(i, dt, deltaTime, destroyedThisFrame);
+        }
+
+        // Life lost only when ALL balls are gone (AC-05)
+        if (balls.length === 0) {
+            handleLifeLost();
+            return;
+        }
+
+        updatePowerUpCapsules(dt);
+        updateTimedEffects(deltaTime);
+    }
+
+    // ============================================================
+    // DRAW - pure rendering; no game-state mutations (R6 decomposition)
+    // ============================================================
+    function drawBricks() {
         for (let r = 0; r < BRICK_ROWS; r++) {
             ctx.fillStyle = ROW_COLORS[r];
             for (let c = 0; c < BRICK_COLS; c++) {
@@ -770,19 +799,21 @@
                     ctx.font = 'bold 14px monospace';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
-                    ctx.fillText('\u2738', brickX + BRICK_WIDTH / 2, brickY + BRICK_HEIGHT / 2);
+                    ctx.fillText('✸', brickX + BRICK_WIDTH / 2, brickY + BRICK_HEIGHT / 2);
                     ctx.textAlign = 'left';
                     ctx.textBaseline = 'alphabetic';
                     ctx.fillStyle = ROW_COLORS[r];
                 }
             }
         }
+    }
 
-        // --- Draw paddle ---
+    function drawPaddle() {
         ctx.fillStyle = '#ecf0f1';
         ctx.fillRect(paddleX, PADDLE_Y, currentPaddleWidth, PADDLE_HEIGHT);
+    }
 
-        // --- Draw all balls (US-12) + sticky ring when glued (US-14) ---
+    function drawBalls() {
         for (const ball of balls) {
             ctx.beginPath();
             ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
@@ -811,8 +842,9 @@
                 ctx.lineWidth = 1;
             }
         }
+    }
 
-        // --- Draw power-up capsules (AC-05, AC-07) ---
+    function drawCapsules() {
         // Coloured square + centred single-letter label. Colours come from
         // POWERUP_COLORS so each type stays visually distinct on the dark bg.
         for (const capsule of activePowerUps) {
@@ -827,25 +859,27 @@
             ctx.textAlign = 'left';
             ctx.textBaseline = 'alphabetic';
         }
+    }
 
-        // --- Draw active effect indicators in the in-canvas HUD (AC-06) ---
+    function drawEffectHUD() {
         // One small label per active effect, stacked at the bottom of the canvas.
         const activeEffectKeys = Object.keys(activeEffects);
-        if (activeEffectKeys.length > 0) {
-            ctx.font = '14px monospace';
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'alphabetic';
-            const lineHeight = 18;
-            const baseY = CANVAS_HEIGHT - 8 - (activeEffectKeys.length - 1) * lineHeight;
-            for (let i = 0; i < activeEffectKeys.length; i++) {
-                const type = activeEffectKeys[i];
-                const effect = activeEffects[type];
-                const secondsLeft = Math.ceil(effect.remainingMs / 1000);
-                ctx.fillStyle = POWERUP_COLORS[type] || '#ffffff';
-                ctx.fillText(type.toUpperCase() + ' ' + secondsLeft + 's', 8, baseY + i * lineHeight);
-            }
+        if (activeEffectKeys.length === 0) return;
+        ctx.font = '14px monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+        const lineHeight = 18;
+        const baseY = CANVAS_HEIGHT - 8 - (activeEffectKeys.length - 1) * lineHeight;
+        for (let i = 0; i < activeEffectKeys.length; i++) {
+            const type = activeEffectKeys[i];
+            const effect = activeEffects[type];
+            const secondsLeft = Math.ceil(effect.remainingMs / 1000);
+            ctx.fillStyle = POWERUP_COLORS[type] || '#ffffff';
+            ctx.fillText(type.toUpperCase() + ' ' + secondsLeft + 's', 8, baseY + i * lineHeight);
         }
+    }
 
+    function drawOverlay() {
         // --- Start screen overlay ---
         if (gameState === 'start') {
             // Semi-transparent dark veil over the game background
@@ -936,6 +970,22 @@
             ctx.textAlign = 'left';
             ctx.textBaseline = 'alphabetic';
         }
+    }
+
+    function draw() {
+        // Clear canvas each frame
+        ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        // Canvas background
+        ctx.fillStyle = '#0d0d1a';
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        drawBricks();
+        drawPaddle();
+        drawBalls();
+        drawCapsules();
+        drawEffectHUD();
+        drawOverlay();
     }
 
     // ============================================================

@@ -621,3 +621,8 @@ describe('computeExplosionChain — US-16', () => {
     expect(found).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Architecture refactoring v2-review — no new pure functions added.
+// R1..R8 are in index.html only. All 72 existing tests remain valid.
+// ---------------------------------------------------------------------------
