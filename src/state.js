@@ -63,6 +63,12 @@ export const state = {
     activePowerUps: [],
     activeEffects: {},
     stickyActive: false,
+
+    // V3 — Score multipliers
+    levelStartTime: 0,              // set lazily on first playing frame
+    comboCount: 0,                  // increments on paddle hit after >=1 brick destroyed
+    brickHitSinceLastPaddle: false, // true when any brick destroyed since last paddle hit
+    livesLostThisLevel: 0,          // used for precision bonus on victory
 };
 
 // ---------------------------------------------------------------------------
@@ -88,6 +94,11 @@ export function resetFullState() {
     state.activeEffects    = {};
     state.stickyActive     = false;
     state.gameState        = 'playing';
+    // V3 — reset score multiplier state
+    state.levelStartTime          = 0; // lazily re-initialised in update()
+    state.comboCount              = 0;
+    state.brickHitSinceLastPaddle = false;
+    state.livesLostThisLevel      = 0;
     resetBallsState();
     resetBricksState();
 }

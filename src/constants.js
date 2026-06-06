@@ -60,14 +60,14 @@ export const PENETRATION_DURATION = 7000;
 
 // Power-up definitions — single source of truth (R1)
 export const POWERUP_DEFS = {
-    fast:        { color: '#FF6B35', label: '\u25B2',  duration: SPEED_DURATION,       kind: 'timed'   },
-    slow:        { color: '#74B9FF', label: '\u25BC',  duration: SPEED_DURATION,       kind: 'timed'   },
-    wide:        { color: '#00B894', label: '\u25C0\u25B6', duration: PADDLE_SIZE_DURATION, kind: 'timed'   },
-    small:       { color: '#E17055', label: '\u25B6\u25C0', duration: PADDLE_SIZE_DURATION, kind: 'timed'   },
-    penetration: { color: '#A29BFE', label: '\u2B21',  duration: PENETRATION_DURATION, kind: 'timed'   },
-    sticky:      { color: '#FD79A8', label: '\u25CF',  duration: null,                 kind: 'instant' },
-    extralife:   { color: '#55EFC4', label: '\u2665',  duration: null,                 kind: 'instant' },
-    multiball:   { color: '#FDCB6E', label: '\u2726',  duration: null,                 kind: 'instant' },
+    fast:        { color: '#FF6B35', label: '▲',  duration: SPEED_DURATION,       kind: 'timed'   },
+    slow:        { color: '#74B9FF', label: '▼',  duration: SPEED_DURATION,       kind: 'timed'   },
+    wide:        { color: '#00B894', label: '◀▶', duration: PADDLE_SIZE_DURATION, kind: 'timed'   },
+    small:       { color: '#E17055', label: '▶◀', duration: PADDLE_SIZE_DURATION, kind: 'timed'   },
+    penetration: { color: '#A29BFE', label: '⬡',  duration: PENETRATION_DURATION, kind: 'timed'   },
+    sticky:      { color: '#FD79A8', label: '●',  duration: null,                 kind: 'instant' },
+    extralife:   { color: '#55EFC4', label: '♥',  duration: null,                 kind: 'instant' },
+    multiball:   { color: '#FDCB6E', label: '✦',  duration: null,                 kind: 'instant' },
     test:        { color: '#FFFFFF', label: 'T',  duration: 5000,                 kind: 'timed'   },
 };
 
@@ -75,3 +75,6 @@ export const POWERUP_COLORS    = Object.fromEntries(Object.entries(POWERUP_DEFS)
 export const POWERUP_LABELS    = Object.fromEntries(Object.entries(POWERUP_DEFS).map(([k, v]) => [k, v.label]));
 export const POWERUP_DURATIONS = Object.fromEntries(Object.entries(POWERUP_DEFS).filter(([, v]) => v.duration).map(([k, v]) => [k, v.duration]));
 export const POWERUP_TYPES     = ['fast', 'slow', 'wide', 'small', 'sticky', 'multiball', 'penetration'];
+
+// V3 — Score system
+export const PRECISION_BONUS = 500; // bonus pts for clearing a level without losing a life

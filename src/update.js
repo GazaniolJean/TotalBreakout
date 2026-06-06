@@ -8,7 +8,7 @@ import {
     BRICK_ROWS, BRICK_COLS, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP,
     BRICK_OFFSET_X, BRICK_OFFSET_Y, ROW_POINTS,
     POWERUP_DROP_CHANCE, EXTRA_LIFE_DROP_CHANCE, POWERUP_FALL_SPEED,
-    POWERUP_TYPES, STICKY_DURATION,
+    POWERUP_TYPES, STICKY_DURATION, PRECISION_BONUS,
 } from './constants.js';
 import { state, resetBallsState } from './state.js';
 import { keys } from './input.js';
@@ -44,10 +44,25 @@ function updatePaddle(dt) {
     state.paddleX = Math.max(0, Math.min(CANVAS_WIDTH - state.currentPaddleWidth, state.paddleX));
 }
 
+/**
+ * handleBrickDestruction(row, col)
+ * Marks the brick as destroyed and adds score applying V3 multipliers:
+ *   - time multiplier  : peak ×3 at start, decays to ×0.1 after 4 min
+ *   - combo multiplier : ×1 + comboCount × 0.1
+ *   - lives bonus      : ×(1 + max(0, lives - 3))  for players with extra lives
+ */
 function handleBrickDestruction(row, col) {
     state.bricks[row][col]     = false;
     state.brickTypes[row][col] = 'destroyed';
-    state.score += ROW_POINTS[row];
+
+    const basePoints  = ROW_POINTS[row];
+    const elapsedMs   = state.levelStartTime ? Date.now() - state.levelStartTime : 0;
+    const timeMult    = _GameCore.computeTimeMultiplier(elapsedMs);
+    const comboMult   = _GameCore.computeComboMultiplier(state.comboCount);
+    const extraLives  = Math.max(0, state.lives - 3);
+    const livesMult   = 1 + extraLives;
+
+    state.score += Math.round(basePoints * timeMult * comboMult * livesMult);
 }
 
 function updateBall(i, dt, deltaTime, destroyedThisFrame) {
@@ -77,6 +92,18 @@ function updateBall(i, dt, deltaTime, destroyedThisFrame) {
             state.paddleX, PADDLE_Y, state.currentPaddleWidth, PADDLE_HEIGHT, MAX_BOUNCE_ANGLE, state.currentSpeedMag
         );
         const bounceOccurred = (ball.vy > 0) && (paddleResult.vy < 0);
+
+        // V3 — update combo streak on every paddle contact
+        if (bounceOccurred) {
+            if (state.brickHitSinceLastPaddle) {
+                state.comboCount++;
+            } else {
+                state.comboCount = 0;
+            }
+            state.brickHitSinceLastPaddle = false;
+            _updateHUD(); // refresh combo display
+        }
+
         if (state.stickyActive && bounceOccurred) {
             ball.stuck = true;
             state.stickyActive = false;
@@ -139,9 +166,17 @@ function updateBall(i, dt, deltaTime, destroyedThisFrame) {
             }
         }
         if (anyDestroyed) {
+            state.brickHitSinceLastPaddle = true; // V3 — flag for combo tracking
             _updateHUD();
             ball.penetration = brickHits.remainingPenetration;
-            if (_GameCore.checkVictory(state.bricks)) state.gameState = 'victory';
+            if (_GameCore.checkVictory(state.bricks)) {
+                // V3 — precision bonus: no life lost this level
+                if (state.livesLostThisLevel === 0) {
+                    state.score += PRECISION_BONUS;
+                    _updateHUD();
+                }
+                state.gameState = 'victory';
+            }
         }
         ball.vx = brickHits.vx; ball.vy = brickHits.vy;
         ball.x  = brickHits.x;  ball.y  = brickHits.y;
@@ -186,6 +221,11 @@ function updateTimedEffects(deltaTime) {
 }
 
 function handleLifeLost() {
+    // V3 — track for precision bonus and reset combo
+    state.livesLostThisLevel++;
+    state.comboCount              = 0;
+    state.brickHitSinceLastPaddle = false;
+
     state.lives -= 1;
     _updateHUD();
     ['fast', 'slow', 'wide', 'small'].forEach(t => delete state.activeEffects[t]);
@@ -204,6 +244,10 @@ function handleLifeLost() {
 
 export function update(deltaTime) {
     if (state.gameState !== 'playing') return;
+
+    // V3 — lazily initialise level timer on first playing frame
+    if (state.levelStartTime === 0) state.levelStartTime = Date.now();
+
     const dt = deltaTime / (1000 / 60);
     updatePaddle(dt);
     const destroyedThisFrame = new Set();

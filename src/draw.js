@@ -9,6 +9,7 @@ import {
     ROW_COLORS, POWERUP_COLORS,
 } from './constants.js';
 import { state } from './state.js';
+import { computeTimeMultiplier, computeComboMultiplier } from './game-core.js';
 
 let _ctx = null;
 
@@ -103,6 +104,41 @@ export function drawEffectHUD() {
     }
 }
 
+/**
+ * drawScoreMultipliers()
+ * V3 — Renders the active score multipliers on the canvas:
+ *   - Top-right : time multiplier  (e.g. "TIME ×2.4")
+ *   - Bottom-right: combo multiplier when combo > 0 (e.g. "COMBO ×1.3")
+ */
+export function drawScoreMultipliers() {
+    if (state.gameState !== 'playing') return;
+
+    const elapsedMs  = state.levelStartTime ? Date.now() - state.levelStartTime : 0;
+    const timeMult   = computeTimeMultiplier(elapsedMs);
+    const comboMult  = computeComboMultiplier(state.comboCount);
+
+    _ctx.font = '13px monospace';
+    _ctx.textAlign = 'right';
+    _ctx.textBaseline = 'alphabetic';
+
+    // Time multiplier — top-right, colour shifts from gold (high) to grey (low)
+    const timeColor = timeMult >= 2.5 ? '#f1c40f'
+                    : timeMult >= 1.5 ? '#e67e22'
+                    : timeMult >= 0.8 ? '#aaaaaa'
+                    : '#666666';
+    _ctx.fillStyle = timeColor;
+    _ctx.fillText('TIME ×' + timeMult.toFixed(1), CANVAS_WIDTH - 8, 20);
+
+    // Combo multiplier — bottom-right, only when active
+    if (state.comboCount > 0) {
+        _ctx.fillStyle = '#74B9FF';
+        _ctx.fillText('COMBO ×' + comboMult.toFixed(1), CANVAS_WIDTH - 8, CANVAS_HEIGHT - 8);
+    }
+
+    _ctx.textAlign = 'left';
+    _ctx.textBaseline = 'alphabetic';
+}
+
 export function drawOverlay() {
     if (state.gameState === 'start') {
         _ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
@@ -121,7 +157,7 @@ export function drawOverlay() {
         _ctx.font = '18px monospace';
         _ctx.fillText('Clavier : Q / D  ou  ← →', cx, cy + 8);
         _ctx.fillText('Souris : deplace la raquette', cx, cy + 36);
-        _ctx.fillText('Mobile : glisser', cx, cy + 64);
+        _ctx.fillText('Mobile : boutons ou glisser', cx, cy + 64);
         _ctx.fillStyle = '#f1c40f';
         _ctx.font = '18px monospace';
         _ctx.fillText('Appuie sur ESPACE ou clique pour commencer', cx, cy + 112);
@@ -172,5 +208,6 @@ export function draw() {
     drawBalls();
     drawCapsules();
     drawEffectHUD();
+    drawScoreMultipliers(); // V3
     drawOverlay();
 }

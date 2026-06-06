@@ -371,6 +371,35 @@ export function computeExplosionChain(bricks, brickTypes, startRow, startCol, ro
   return destroyed;
 }
 
+
+/**
+ * computeTimeMultiplier(elapsedMs)
+ * Returns a score multiplier based on elapsed time in the current level:
+ *   0   – 2 min : 3.0 → 1.0  (linear decrease)
+ *   2   – 3 min : 1.0         (flat)
+ *   3   – 4 min : 1.0 → 0.1  (linear decrease)
+ *   > 4 min     : 0.1         (floor)
+ */
+export function computeTimeMultiplier(elapsedMs) {
+  const PHASE1_MS = 120000; // 2 min
+  const PHASE2_MS = 180000; // 3 min
+  const PHASE3_MS = 240000; // 4 min
+  if (elapsedMs <= 0)         return 3.0;
+  if (elapsedMs < PHASE1_MS)  return 3.0 - 2.0 * (elapsedMs / PHASE1_MS);
+  if (elapsedMs < PHASE2_MS)  return 1.0;
+  if (elapsedMs < PHASE3_MS)  return 1.0 - 0.9 * ((elapsedMs - PHASE2_MS) / (PHASE3_MS - PHASE2_MS));
+  return 0.1;
+}
+
+/**
+ * computeComboMultiplier(comboCount)
+ * Each successful paddle-return after at least one brick hit adds +0.1 to the
+ * multiplier. comboCount 0 → ×1.0, count 5 → ×1.5, count 10 → ×2.0, etc.
+ */
+export function computeComboMultiplier(comboCount) {
+  return 1 + comboCount * 0.1;
+}
+
 // ---------------------------------------------------------------------------
 // Browser compatibility shim — temporary, removed in step 8
 // Keeps window.GameCore intact so index.html works without modification.
@@ -389,5 +418,7 @@ if (typeof window !== 'undefined') {
     spawnExtraBalls,
     computeBrickCollisionPenetrating,
     computeExplosionChain,
+    computeTimeMultiplier,
+    computeComboMultiplier,
   };
 }
