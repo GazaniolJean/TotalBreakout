@@ -7,6 +7,7 @@ import { initInput } from './input.js';
 import { initPowerups } from './powerups.js';
 import { initDraw, draw } from './draw.js';
 import { initUpdate, update, releaseStickyBall } from './update.js';
+import { computeComboMultiplier } from './game-core.js';
 
 // ============================================================
 // CANVAS SETUP
@@ -20,10 +21,26 @@ const ctx = canvas.getContext('2d');
 // HUD
 // ============================================================
 function updateHUD() {
+    // Lives display: ●●● + "+N" for extra lives
     const dots  = '●'.repeat(Math.min(state.lives, 3));
     const extra = state.lives > 3 ? ' +' + (state.lives - 3) : '';
     document.getElementById('livesDisplay').textContent = dots + extra;
+
+    // Score
     document.getElementById('scoreDisplay').textContent = state.score;
+
+    // V3 — Combo display (center HUD)
+    const comboEl = document.getElementById('comboDisplay');
+    if (comboEl) {
+        if (state.comboCount > 0 && state.gameState === 'playing') {
+            const mult = computeComboMultiplier(state.comboCount).toFixed(1);
+            comboEl.textContent = 'COMBO ' + state.comboCount + '  ×' + mult;
+            comboEl.style.opacity = '1';
+        } else {
+            comboEl.textContent = '';
+            comboEl.style.opacity = '0';
+        }
+    }
 }
 
 // ============================================================

@@ -33,7 +33,7 @@
             width: 100%;          /* same width as canvas */
             max-width: 800px;
             display: flex;
-            justify-content: space-between;  /* score left, lives right */
+            justify-content: space-between;  /* score left, combo center, lives right */
             align-items: center;
             padding: 0 4px;
             color: #fff;
@@ -51,6 +51,19 @@
             font-size: 18px;
             color: #fff;
             letter-spacing: 1px;
+            min-width: 80px;
+        }
+
+        /* V3 — Combo display (center HUD) */
+        #comboDisplay {
+            font-family: monospace;
+            font-size: 14px;
+            color: #74B9FF;
+            letter-spacing: 1px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            text-align: center;
+            flex: 1;
         }
 
         #gameCanvas {
@@ -63,15 +76,61 @@
             box-shadow: 0 0 24px rgba(80, 120, 220, 0.25), 0 0 2px #222;
             border-radius: 2px;
         }
+
+        /* V3 — Mobile directional buttons */
+        #mobileControls {
+            display: none; /* shown only on touch devices via media query */
+            width: 100%;
+            max-width: 800px;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 0 4px;
+        }
+
+        /* Show on touch-primary devices */
+        @media (pointer: coarse) {
+            #mobileControls {
+                display: flex;
+            }
+        }
+
+        .mobileBtn {
+            flex: 1;
+            height: 56px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 2px solid rgba(255, 255, 255, 0.18);
+            border-radius: 8px;
+            color: #fff;
+            font-size: 28px;
+            font-family: monospace;
+            cursor: pointer;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none; /* prevent scroll interference */
+            transition: background 0.1s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .mobileBtn:active {
+            background: rgba(255, 255, 255, 0.22);
+        }
     </style>
 </head>
 <body>
     <div id="gameWrapper">
       <div id="gameHUD">
         <span id="scoreDisplay">0</span>
+        <span id="comboDisplay"></span>
         <span id="livesDisplay"></span>
       </div>
       <canvas id="gameCanvas"></canvas>
+      <!-- V3 — Mobile directional buttons (visible on touch devices) -->
+      <div id="mobileControls">
+        <button id="btnLeft"  class="mobileBtn" aria-label="Move left">◀</button>
+        <button id="btnRight" class="mobileBtn" aria-label="Move right">▶</button>
+      </div>
     </div>
 
     <script type="module" src="src/main.js"></script>

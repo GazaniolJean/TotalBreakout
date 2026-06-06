@@ -77,4 +77,53 @@ export function initInput(canvas, { resetGame, releaseStickyBall }) {
         touchStartX  = 0;
         paddleStartX = 0;
     });
+
+    // -----------------------------------------------------------------------
+    // V3 — Mobile directional buttons (#btnLeft / #btnRight)
+    // Press/hold moves the paddle; handles game state transitions on first tap.
+    // -----------------------------------------------------------------------
+    const btnLeft  = document.getElementById('btnLeft');
+    const btnRight = document.getElementById('btnRight');
+
+    if (btnLeft && btnRight) {
+        /**
+         * handleStateOnButtonPress()
+         * Returns true if the press was consumed by a state transition
+         * (start, gameover, victory, sticky), so the button should NOT
+         * set a movement key.
+         */
+        function handleStateOnButtonPress() {
+            if (state.gameState === 'start') {
+                state.gameState = 'playing';
+                return true;
+            }
+            if (state.gameState === 'gameover' || state.gameState === 'victory') {
+                resetGame();
+                return true;
+            }
+            if (state.balls.some(b => b.stuck) && state.gameState === 'playing') {
+                releaseAllStuckBalls();
+                return true;
+            }
+            return false;
+        }
+
+        ['mousedown', 'touchstart'].forEach(evtName => {
+            btnLeft.addEventListener(evtName, (e) => {
+                e.preventDefault();
+                if (!handleStateOnButtonPress()) keys[KEY_LEFT] = true;
+            }, { passive: false });
+
+            btnRight.addEventListener(evtName, (e) => {
+                e.preventDefault();
+                if (!handleStateOnButtonPress()) keys[KEY_RIGHT] = true;
+            }, { passive: false });
+        });
+
+        // Release on any end / cancel / leave event
+        ['mouseup', 'touchend', 'touchcancel', 'mouseleave'].forEach(evtName => {
+            btnLeft.addEventListener(evtName,  () => { keys[KEY_LEFT]  = false; });
+            btnRight.addEventListener(evtName, () => { keys[KEY_RIGHT] = false; });
+        });
+    }
 }
