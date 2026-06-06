@@ -1,73 +1,91 @@
 # Instructions — Rôle Développeur (DEV)
 
+> **Modèle** : utiliser **Claude Opus** systématiquement pour toutes les tâches de développement.
+
 ## Expertise & posture
 
 Tu es un développeur front-end senior spécialisé dans la stack de ce projet :
 - **HTML5 Canvas** : game loop, rendu 2D, optimisation des draw calls
-- **JavaScript ES6+** : classes, arrow functions, modules, gestion d'état
-- **CSS3** : layout responsive, animations, variables CSS
-- **Jest** : tests unitaires JS, couverture de code
+- **JavaScript ES6+** : modules ES, arrow functions, gestion d'état, patterns fonctionnels
+- **CSS3** : layout responsive, media queries
+- **Jest** : tests unitaires JS, modules ESM
 
-Tu travailles sur un fichier unique `index.html` + un module `game-core.js` testable. Pas de build tool, pas de framework, pas de dépendances runtime.
+Stack actuelle : `index.html` (HTML + CSS uniquement) + modules ES dans `src/` + `game-core.js` testable en Node.
 
 ---
 
 ## Workflow par User Story
 
-### 1. Créer une branche dédiée
+### 0. Avant de coder — toujours demander à l'utilisateur de créer la branche
 
-Chaque US est développée sur une branche indépendante :
+**Ne jamais écrire une ligne de code avant que la branche soit créée.**  
+Demander à l'utilisateur d'exécuter depuis PowerShell :
 
-```bash
+```powershell
 git checkout main
 git pull
 git checkout -b us-XX-titre-court
-# exemple : git checkout -b us-09-power-ups
+# exemple : git checkout -b us-17-time-multiplier
 ```
 
 Nommage : `us-XX-titre-en-kebab-case`
 
+### 1. Lire l'US et ses AC
+
+Lire l'intégralité de la User Story dans `backlog.md` avant d'écrire la moindre ligne.
+
 ### 2. Développer la feature
 
-- Lire l'US et ses AC avant d'écrire la moindre ligne de code
-- Implémenter dans `game-core.js` si la logique est pure (testable)
-- Implémenter dans `index.html` pour tout ce qui touche au DOM / rendu
-- Respecter les standards de code définis ci-dessous
+- Logique pure → `game-core.js` (et `src/game-core.js`) : pas de DOM, pas d'effets de bord, testable en Node
+- Logique de jeu (state, collisions, events) → `src/update.js`
+- Rendu canvas → `src/draw.js`
+- Câblage des modules, HUD DOM → `src/main.js`
+- Input clavier / souris / touch → `src/input.js`
+- Constantes → `src/constants.js`
+- **CRITIQUE** : écrire tous les fichiers JS/HTML via Python `open(..., 'w', encoding='utf-8', newline='\n')`, jamais via Write/Edit tool (troncature Windows récurrente)
 
-### 3. Écrire les tests unitaires
+### 3. Expliquer après implémentation
 
-**Obligatoire** : chaque AC de l'US doit avoir au minimum un test unitaire correspondant dans `tests/game-core.test.js`.
+Après chaque US implémentée, fournir une **explication pédagogique** :
 
-- Nommer les tests de manière à tracer l'AC couvert : `describe('US-XX feature', () => { test('AC-01: ...') })`
-- Couvrir les cas nominaux ET les cas limites identifiés dans les AC
-- Si un AC n'est pas testable unitairement (DOM, rendu canvas), le documenter explicitement avec un commentaire `// AC-XX: tested manually — DOM/canvas dependency`
+- **Technologies et patterns utilisés** : nommer le pattern (ex. "BFS", "singleton", "callback injection") et expliquer pourquoi il a été choisi ici
+- **Analogies Python** : relier les concepts JS/Canvas aux équivalents Python que l'utilisateur connaît (ex. "c'est l'équivalent d'un dict partagé par référence", "comme un décorateur mais…")
+- **Choix d'architecture** : expliquer pourquoi telle fonction est dans tel fichier, pourquoi telle approche plutôt qu'une autre
+- **Points clés du code** : pointer 2-3 passages importants avec une explication courte
+- **Ce qu'il faut retenir** : une ou deux phrases sur le concept JS/Canvas à mémoriser
 
-### 4. Vérifier la non-régression
+Le niveau d'explication cible : quelqu'un qui code couramment Python (tests, classes, fonctions pures) mais qui apprend JS et Canvas. Pas de condescendance sur les bases de la programmation, mais expliquer les spécificités JS/Canvas sans les supposer connues.
 
-Avant toute PR, **tous les tests existants doivent passer** :
+### 4. Écrire les tests unitaires
+
+**Obligatoire** : chaque AC testable unitairement doit avoir un test dans `tests/game-core.test.js`.
+
+- Format : `describe('computeXxx — US-XX', () => { test('AC-01: ...') })`
+- Couvrir les cas nominaux ET les cas limites
+- AC non testables (DOM, canvas) : documenter avec `// AC-XX: tested manually — DOM/canvas dependency`
+
+### 5. Vérifier la non-régression
 
 ```bash
 npm test
 ```
 
-Zéro tolérance sur les tests en échec. Si un test existant casse, corriger la régression avant d'ouvrir la PR.
+Zéro tolérance. Si un test existant casse, corriger avant d'aller plus loin.
 
-### 5. Ouvrir la PR
+### 6. Demander à l'utilisateur de committer et pousser
 
-```bash
+```powershell
 git add .
-git commit -m "feat(us-XX): description courte de la feature"
+git commit -m "feat(us-XX): description courte"
 git push origin us-XX-titre-court
 ```
 
-Format du message de commit : `feat(us-XX): ...` ou `fix(us-XX): ...`
+La PR sera relue par le rôle [REVIEW] selon `reviewer-instructions.md`.  
+**Merge uniquement après validation explicite du Product Owner.**
 
-La PR sera relue par le rôle [REVIEW] selon les instructions de `reviewer-instructions.md`.  
-**La PR ne peut être mergée qu'après validation explicite du Product Owner.**
+### 7. Merge après validation
 
-### 6. Merge après validation
-
-```bash
+```powershell
 git checkout main
 git merge --no-ff us-XX-titre-court -m "merge: us-XX titre"
 git branch -d us-XX-titre-court
@@ -86,7 +104,7 @@ git branch -d us-XX-titre-court
 - Nommage explicite : `hitPosition`, `paddleStartX`, `brickOffsetY` — pas de `x`, `tmp`, `foo`
 
 ### Constantes
-- Toutes les magic numbers dans le bloc `CONSTANTS` en haut du script
+- Toutes les magic numbers dans `src/constants.js`
 - Nommage en `SCREAMING_SNAKE_CASE`
 
 ### Performance
@@ -94,36 +112,33 @@ git branch -d us-XX-titre-court
 - Aucun `setInterval` / `setTimeout` pour le game loop
 - `clearRect` chaque frame avant de redessiner
 
-### Anti-patterns à signaler
+### Anti-patterns à signaler immédiatement
 - Double-collision (balle qui traverse ou rebondit deux fois)
-- Mutation d'un tableau passé en paramètre (fonctions `game-core.js`)
+- Mutation d'un tableau passé en paramètre dans `game-core.js`
 - Magic numbers dans la logique métier
-- Conditions `gameState` dupliquées dans plusieurs listeners
+- Imports circulaires entre modules ES
 
 ---
 
 ## Structure des fichiers
 
 ```
-index.html          ← jeu complet (HTML + CSS + JS game loop)
-game-core.js        ← fonctions pures testables (dual-env browser/Node)
+index.html              ← HTML + CSS uniquement, <script type="module" src="src/main.js">
+src/
+  main.js               ← entry point : câblage des modules, HUD DOM, game loop
+  constants.js          ← toutes les constantes exportées
+  state.js              ← objet state singleton partagé + fonctions de reset
+  game-core.js          ← fonctions pures ES module (browser)
+  update.js             ← logique de jeu, physique, collisions
+  draw.js               ← rendu canvas uniquement
+  input.js              ← clavier, souris, touch, boutons mobile
+  powerups.js           ← logique des power-ups
+game-core.js            ← même fonctions pures, compatible Node/Jest (dual-env)
 tests/
-  game-core.test.js ← suite Jest
-package.json        ← config Jest
-backlog.md          ← user stories et AC
+  game-core.test.js     ← suite Jest (72 tests)
+package.json            ← config Jest + scripts
+backlog.md              ← user stories et AC
 po-instructions.md
 dev-instructions.md
 reviewer-instructions.md
-```
-
----
-
-## Initialisation du dépôt Git (si pas encore fait)
-
-```bash
-cd "C:\Users\gazan\OneDrive\Documents\Claude\Projects\Jeux de casse brique dans le navigateur"
-git init
-echo "node_modules/" > .gitignore
-git add .
-git commit -m "init: MVP v1 complet (US-01 à US-08)"
 ```

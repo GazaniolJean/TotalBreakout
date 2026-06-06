@@ -1,7 +1,7 @@
 // src/constants.js — All game constants, single source of truth.
 
 export const CANVAS_WIDTH  = 800;
-export const CANVAS_HEIGHT = 600;
+export const CANVAS_HEIGHT = 600; 
 
 export const BALL_RADIUS    = 8;
 export const BALL_SPEED_X   = 4;
