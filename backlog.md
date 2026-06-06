@@ -388,7 +388,127 @@ Contraintes : solo dev · pas de backend · mobile-friendly · 60 FPS cible
 
 ---
 
-## Hors scope v2 — Candidats v3
+---
+
+## Ordre de développement v3 — Scoring & Mobile
+
+| # | User Story | Statut |
+|---|-----------|--------|
+| US-17 | Multiplicateur temporel de score | ✅ Fait |
+| US-18 | Multiplicateur de combo | ✅ Fait |
+| US-19 | Bonus de précision (niveau sans mort) | ✅ Fait |
+| US-20 | Bonus de score pour les vies supplémentaires | ✅ Fait |
+| US-21 | Boutons directionnels mobile | ✅ Fait |
+
+---
+
+## US-17 · Multiplicateur temporel de score
+
+**En tant que** joueur expérimenté, **je veux** que le score par brique soit plus élevé en début de niveau **afin d'** être récompensé pour jouer vite et efficacement.
+
+**Dépendances :** US-06
+
+### Acceptance Criteria
+
+- AC-01 — Le multiplicateur suit trois phases dans le niveau : 0–2 min → décroissance linéaire de ×3.0 à ×1.0 ; 2–3 min → plateau à ×1.0 ; 3–4 min → décroissance linéaire de ×1.0 à ×0.1 ; au-delà → plancher à ×0.1.
+- AC-02 — Le timer de niveau (`levelStartTime`) est initialisé lazily à la première frame `playing`, évitant de compter le temps passé sur l'écran start.
+- AC-03 — `levelStartTime` est remis à 0 dans `resetFullState()` et réinitialisé à `Date.now()` dès la reprise du jeu.
+- AC-04 — Le multiplicateur est calculé par la fonction pure `computeTimeMultiplier(elapsedMs)` dans `game-core.js`, testable unitairement.
+- AC-05 — Le multiplicateur courant est affiché en haut à droite du canvas (ex. `TIME ×2.4`) avec un code couleur : or ≥ 2.5, orange ≥ 1.5, gris sinon.
+- AC-06 — Le score final appliqué est `Math.round(basePoints × timeMult × comboMult × livesMult)` (voir US-18 et US-20 pour les autres facteurs).
+
+### Hors scope
+- Timer affiché dans le HUD DOM
+- Accélération de la balle liée au timer
+
+---
+
+## US-18 · Multiplicateur de combo
+
+**En tant que** joueur expérimenté, **je veux** que mon combo augmente chaque fois que je renvoie la balle après avoir cassé au moins une brique **afin d'** être récompensé pour enchaîner les rebonds productifs sans rater.
+
+**Dépendances :** US-06
+
+### Acceptance Criteria
+
+- AC-01 — Le combo (`comboCount`) est incrémenté de 1 à chaque rebond raquette si au moins une brique a été détruite depuis le dernier rebond raquette.
+- AC-02 — Si aucune brique n'a été détruite depuis le dernier rebond raquette, `comboCount` revient à 0.
+- AC-03 — `brickHitSinceLastPaddle` est un flag booléen mis à `true` à chaque destruction de brique et remis à `false` à chaque rebond raquette (après la mise à jour du combo).
+- AC-04 — Le multiplicateur de combo est `1 + comboCount × 0.1` (combo 0 → ×1.0, combo 5 → ×1.5, combo 10 → ×2.0…), calculé par `computeComboMultiplier(comboCount)` dans `game-core.js`.
+- AC-05 — `comboCount` est remis à 0 sur perte de vie et sur `resetFullState()`.
+- AC-06 — Le combo est affiché dans le HUD DOM au centre (ex. `COMBO 5  ×1.5`) et disparaît (opacité 0) quand `comboCount === 0`.
+- AC-07 — Le combo est également affiché en bas à droite du canvas en bleu (`#74B9FF`) uniquement quand `comboCount > 0`.
+
+### Hors scope
+- Cap sur le combo
+- Animation visuelle de "combo break"
+
+---
+
+## US-19 · Bonus de précision (niveau sans mort)
+
+**En tant que** joueur expérimenté, **je veux** recevoir un bonus de points si je termine le niveau sans perdre de vie **afin d'** être récompensé pour un jeu parfait.
+
+**Dépendances :** US-07
+
+### Acceptance Criteria
+
+- AC-01 — Si `livesLostThisLevel === 0` au moment de la victoire, `PRECISION_BONUS` (constante, défaut `500`) est ajouté au score avant d'afficher l'overlay.
+- AC-02 — `livesLostThisLevel` est un compteur incrémenté dans `handleLifeLost()`, remis à 0 dans `resetFullState()`.
+- AC-03 — Le bonus n'est pas annoncé séparément dans l'overlay (il est inclus dans le score affiché). Pas d'UI dédiée pour cette version.
+- AC-04 — Aucune régression sur la condition de victoire (US-07) : le score est incrémenté avant `state.gameState = 'victory'`.
+
+### Hors scope
+- Message "PERFECT" dans l'overlay de victoire
+- Bonus différent selon le nombre de vies restantes
+
+---
+
+## US-20 · Bonus de score pour les vies supplémentaires
+
+**En tant que** joueur, **je veux** que chaque vie accumulée au-delà de 3 augmente les points gagnés par brique **afin d'** avoir une raison de collecter des +1 Vie même quand je suis déjà au maximum.
+
+**Dépendances :** US-06, US-15
+
+### Acceptance Criteria
+
+- AC-01 — Pour chaque vie au-delà de 3, le multiplicateur de score par brique est augmenté de +1 : `livesMult = 1 + max(0, lives - 3)`. Exemples : 3 vies → ×1, 4 vies → ×2, 5 vies → ×3.
+- AC-02 — Ce multiplicateur est appliqué en temps réel au moment de la destruction de chaque brique (pas recalculé rétroactivement).
+- AC-03 — Le multiplicateur vies est combiné avec les autres (US-17, US-18) dans la formule : `Math.round(basePoints × timeMult × comboMult × livesMult)`.
+- AC-04 — Aucun affichage dédié dans le HUD pour ce multiplicateur (les vies extra sont déjà visibles via le `+N` dans le HUD US-05 CR).
+
+### Hors scope
+- Plafond sur `livesMult`
+- Indicateur visuel du bonus de vies
+
+---
+
+## US-21 · Boutons directionnels mobile
+
+**En tant que** joueur mobile, **je veux** des boutons gauche et droite appuyables sous le canvas **afin de** contrôler la raquette sans avoir à faire un geste de glissement.
+
+**Dépendances :** US-03
+
+### Acceptance Criteria
+
+- AC-01 — Deux boutons `#btnLeft` (◀) et `#btnRight` (▶) sont affichés sous le canvas, chacun occupant 50 % de la largeur disponible.
+- AC-02 — Les boutons sont visibles **uniquement sur les écrans tactiles** (`@media (pointer: coarse)`). Sur desktop, ils restent masqués.
+- AC-03 — Maintenir un bouton appuyé déplace la raquette en continu au même `PADDLE_SPEED` que les touches clavier (via le même objet `keys`).
+- AC-04 — Sur relâchement (mouseup, touchend, touchcancel, mouseleave), le mouvement s'arrête immédiatement.
+- AC-05 — Un appui sur un bouton depuis l'état `'start'` démarre la partie. Depuis `'gameover'` ou `'victory'`, il déclenche `resetGame()`. Depuis `'playing'` avec une balle collée, il relâche la balle.
+- AC-06 — Les boutons utilisent `touch-action: none` et `e.preventDefault()` pour empêcher le scroll de la page pendant le jeu.
+- AC-07 — La logique de wiring est centralisée dans `initInput()` ; aucune référence aux boutons dans les autres modules.
+
+### Hors scope
+- Bouton "tir" ou "pause"
+- Joystick virtuel
+- Affichage sur desktop
+
+---
+
+---
+
+## Hors scope v3 — Candidats v4
 
 - Niveaux multiples
 - Briques multi-hit
