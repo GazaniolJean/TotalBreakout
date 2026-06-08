@@ -170,11 +170,6 @@ export function computeBrickCollisionPenetrating(
   };
 }
 
-/**
- * computeExplosionChain(bricks, brickTypes, startRow, startCol, rows, cols)
- * BFS — collects all alive bricks destroyed by chain reaction from an explosive.
- * brickTypes cells are objects { type, hitsLeft, maxHits } (US-23).
- */
 export function computeExplosionChain(bricks, brickTypes, startRow, startCol, rows, cols) {
   const destroyed = [];
   const visited   = new Set();
@@ -225,4 +220,15 @@ export function computeTimeMultiplier(elapsedMs) {
 
 export function computeComboMultiplier(comboCount) {
   return 1 + comboCount * 0.1;
+}
+
+/**
+ * insertHighScore(scores, entry)                                  US-22
+ * Pure: inserts entry, returns new array sorted desc by score, max 10 entries.
+ * AC-09: does NOT mutate input array.
+ */
+export function insertHighScore(scores, entry) {
+  const newScores = [...scores, entry];
+  newScores.sort((a, b) => b.score - a.score);
+  return newScores.slice(0, 10);
 }
