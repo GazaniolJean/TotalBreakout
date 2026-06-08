@@ -13,6 +13,7 @@ import { buildBricks } from './game-core.js';
 // Helpers used to initialise / reset sub-structures
 // ---------------------------------------------------------------------------
 
+/** makeBall() — retourne un objet balle initialisé à la position et à la vitesse de départ (centre du canvas, direction haut-droite). */
 function makeBall() {
     return {
         x: CANVAS_WIDTH / 2,
@@ -93,4 +94,37 @@ export const state = {
     livesLostThisLevel: 0,          // used for precision bonus on victory
 };
 
-// ---
+// ---------------------------------------------------------------------------
+// Reset helpers — called by resetGame() and handleLifeLost()
+// ---------------------------------------------------------------------------
+
+/** resetBallsState() — réinitialise le tableau de balles à une seule balle de départ. Appelée après une perte de vie. */
+export function resetBallsState() {
+    state.balls = [makeBall()];
+}
+
+/** resetBricksState() — régénère la grille de briques et leurs types (tirage aléatoire explosif/multihit/normal). */
+export function resetBricksState() {
+    state.bricks     = buildBricks(BRICK_ROWS, BRICK_COLS);
+    state.brickTypes = makeBrickTypes();
+}
+
+/** resetFullState() — remet l'intégralité de l'état à zéro (vies, score, effets, multiplicateurs V3, balle, briques) pour démarrer une nouvelle partie. */
+export function resetFullState() {
+    state.lives            = MAX_LIVES;
+    state.score            = 0;
+    state.currentSpeedMag  = BALL_SPEED_MAG;
+    state.currentPaddleWidth = PADDLE_WIDTH;
+    state.paddleX          = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
+    state.activePowerUps   = [];
+    state.activeEffects    = {};
+    state.stickyActive     = false;
+    state.gameState        = 'playing';
+    // V3 — reset score multiplier state
+    state.levelStartTime          = 0; // lazily re-initialised in update()
+    state.comboCount              = 0;
+    state.brickHitSinceLastPaddle = false;
+    state.livesLostThisLevel      = 0;
+    resetBallsState();
+    resetBricksState();
+}
