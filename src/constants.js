@@ -76,4 +76,7 @@ export const POWERUP_DEFS = {
 export const POWERUP_COLORS    = Object.fromEntries(Object.entries(POWERUP_DEFS).map(([k, v]) => [k, v.color]));
 export const POWERUP_LABELS    = Object.fromEntries(Object.entries(POWERUP_DEFS).map(([k, v]) => [k, v.label]));
 export const POWERUP_DURATIONS = Object.fromEntries(Object.entries(POWERUP_DEFS).filter(([, v]) => v.duration).map(([k, v]) => [k, v.duration]));
-export const POWERUP_TYPES     = ['fast', 'slow', 'wide', 'small', 'sticky', 'multibal
+export const POWERUP_TYPES     = ['fast', 'slow', 'wide', 'small', 'sticky', 'multiball', 'penetration'];
+
+// V3 — Score system
+export const PRECISION_BONUS = 500; // bonus pts for clearing a level without losing a life
