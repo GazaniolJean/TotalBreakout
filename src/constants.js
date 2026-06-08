@@ -1,7 +1,7 @@
 // src/constants.js — All game constants, single source of truth.
 
 export const CANVAS_WIDTH  = 800;
-export const CANVAS_HEIGHT = 600; 
+export const CANVAS_HEIGHT = 600;
 
 export const BALL_RADIUS    = 8;
 export const BALL_SPEED_X   = 4;
@@ -33,8 +33,8 @@ export const MAX_LIVES = 3;
 export const POWERUP_DROP_CHANCE    = 0.20;
 export const EXTRA_LIFE_DROP_CHANCE = 0.05;
 export const EXPLOSIVE_BRICK_CHANCE = 0.08;
-export const MULTIHIT2_CHANCE       = 0.10; // US-23: ×2 hit bricks
-export const MULTIHIT3_CHANCE       = 0.05; // US-23: ×3 hit bricks
+export const MULTIHIT2_CHANCE       = 0.10; // US-23
+export const MULTIHIT3_CHANCE       = 0.05; // US-23
 export const POWERUP_FALL_SPEED     = 3;
 export const POWERUP_SIZE           = 20;
 
@@ -79,4 +79,8 @@ export const POWERUP_DURATIONS = Object.fromEntries(Object.entries(POWERUP_DEFS)
 export const POWERUP_TYPES     = ['fast', 'slow', 'wide', 'small', 'sticky', 'multiball', 'penetration'];
 
 // V3 — Score system
-export const PRECISION_BONUS = 500; // bonus pts for clearing a level without losing a life
+export const PRECISION_BONUS = 500;
+
+// High scores (US-22)
+export const HS_MAX_ENTRIES = 10;
+export const HS_STORAGE_KEY = 'breakout_highscores';

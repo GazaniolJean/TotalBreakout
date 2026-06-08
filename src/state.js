@@ -5,15 +5,10 @@ import {
     CANVAS_WIDTH, BALL_SPEED_X, BALL_SPEED_Y, BALL_SPEED_MAG,
     PADDLE_WIDTH, MAX_LIVES,
     BRICK_ROWS, BRICK_COLS,
-    EXPLOSIVE_BRICK_CHANCE, MULTIHIT2_CHANCE, MULTIHIT3_CHANCE, // US-23
+    EXPLOSIVE_BRICK_CHANCE, MULTIHIT2_CHANCE, MULTIHIT3_CHANCE,
 } from './constants.js';
 import { buildBricks } from './game-core.js';
 
-// ---------------------------------------------------------------------------
-// Helpers used to initialise / reset sub-structures
-// ---------------------------------------------------------------------------
-
-/** makeBall() — retourne un objet balle initialisé à la position et à la vitesse de départ (centre du canvas, direction haut-droite). */
 function makeBall() {
     return {
         x: CANVAS_WIDTH / 2,
@@ -27,23 +22,10 @@ function makeBall() {
     };
 }
 
-/**
- * makeBrickTypes()                                                  US-23
- * Returns a 2-D array of brick descriptors { type, hitsLeft, maxHits }.
- * A single uniform roll selects among explosive / multihit3 / multihit2 / normal
- * so each probability is exact and independent.
- *
- * type values:
- *   'normal'    — standard 1-hit brick
- *   'explosive' — 1-hit but triggers chain explosion on destruction (US-16)
- *   'multihit'  — requires maxHits hits before being destroyed (US-23)
- *   'destroyed' — runtime sentinel set by update.js when brick is removed
- */
 function makeBrickTypes() {
     const THRESHOLD_EXPLOSIVE = EXPLOSIVE_BRICK_CHANCE;
     const THRESHOLD_MH3       = THRESHOLD_EXPLOSIVE + MULTIHIT3_CHANCE;
     const THRESHOLD_MH2       = THRESHOLD_MH3       + MULTIHIT2_CHANCE;
-
     const types = [];
     for (let r = 0; r < BRICK_ROWS; r++) {
         types[r] = [];
@@ -59,57 +41,40 @@ function makeBrickTypes() {
     return types;
 }
 
-// ---------------------------------------------------------------------------
-// The single mutable state object shared across all modules
-// ---------------------------------------------------------------------------
 export const state = {
-    // Balls
     balls: [makeBall()],
     currentSpeedMag: BALL_SPEED_MAG,
-
-    // Paddle
     paddleX: (CANVAS_WIDTH - PADDLE_WIDTH) / 2,
     currentPaddleWidth: PADDLE_WIDTH,
-
-    // Score & lives
     lives: MAX_LIVES,
     score: 0,
-
-    // Game state machine
     gameState: 'start',
-
-    // Bricks
     bricks: buildBricks(BRICK_ROWS, BRICK_COLS),
     brickTypes: makeBrickTypes(),
-
-    // Power-ups
     activePowerUps: [],
     activeEffects: {},
     stickyActive: false,
-
-    // V3 — Score multipliers
-    levelStartTime: 0,              // set lazily on first playing frame
-    comboCount: 0,                  // increments on paddle hit after >=1 brick destroyed
-    brickHitSinceLastPaddle: false, // true when any brick destroyed since last paddle hit
-    livesLostThisLevel: 0,          // used for precision bonus on victory
+    levelStartTime: 0,
+    comboCount: 0,
+    brickHitSinceLastPaddle: false,
+    livesLostThisLevel: 0,
+    // High scores (US-22)
+    hsInputLetters: ['A', 'A', 'A'],
+    hsInputCursor: 0,
+    hsPendingScore: null,
+    hsNewEntryRank: -1,
+    hsFromStartScreen: false,
 };
 
-// ---------------------------------------------------------------------------
-// Reset helpers — called by resetGame() and handleLifeLost()
-// ---------------------------------------------------------------------------
-
-/** resetBallsState() — réinitialise le tableau de balles à une seule balle de départ. Appelée après une perte de vie. */
 export function resetBallsState() {
     state.balls = [makeBall()];
 }
 
-/** resetBricksState() — régénère la grille de briques et leurs types (tirage aléatoire explosif/multihit/normal). */
 export function resetBricksState() {
     state.bricks     = buildBricks(BRICK_ROWS, BRICK_COLS);
     state.brickTypes = makeBrickTypes();
 }
 
-/** resetFullState() — remet l'intégralité de l'état à zéro (vies, score, effets, multiplicateurs V3, balle, briques) pour démarrer une nouvelle partie. */
 export function resetFullState() {
     state.lives            = MAX_LIVES;
     state.score            = 0;
@@ -120,11 +85,14 @@ export function resetFullState() {
     state.activeEffects    = {};
     state.stickyActive     = false;
     state.gameState        = 'playing';
-    // V3 — reset score multiplier state
-    state.levelStartTime          = 0; // lazily re-initialised in update()
+    state.levelStartTime          = 0;
     state.comboCount              = 0;
     state.brickHitSinceLastPaddle = false;
     state.livesLostThisLevel      = 0;
+    // US-22 — reset HS input state (scores NOT cleared, AC-10)
+    state.hsInputLetters  = ['A', 'A', 'A'];
+    state.hsInputCursor   = 0;
+    state.hsPendingScore  = null;
     resetBallsState();
     resetBricksState();
 }
