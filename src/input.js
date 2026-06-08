@@ -3,29 +3,75 @@
 import { CANVAS_WIDTH, KEY_LEFT, KEY_RIGHT, PADDLE_SPEED } from './constants.js';
 import { state } from './state.js';
 
-// keys: tracks which keys are currently held down
+// ---------------------------------------------------------------------------
+// US-22 — High score input helpers
+// ---------------------------------------------------------------------------
+
+function cycleLetterUp(letter)   { return letter === 'Z' ? 'A' : String.fromCharCode(letter.charCodeAt(0) + 1); }
+function cycleLetterDown(letter) { return letter === 'A' ? 'Z' : String.fromCharCode(letter.charCodeAt(0) - 1); }
+
+function handleHsInputKey(key, confirmCallback) {
+    const k = key.toLowerCase();
+    if (key === 'ArrowUp') {
+        state.hsInputLetters[state.hsInputCursor] = cycleLetterUp(state.hsInputLetters[state.hsInputCursor]);
+        return true;
+    }
+    if (key === 'ArrowDown') {
+        state.hsInputLetters[state.hsInputCursor] = cycleLetterDown(state.hsInputLetters[state.hsInputCursor]);
+        return true;
+    }
+    if (key === 'ArrowLeft' || k === KEY_LEFT) {
+        state.hsInputCursor = (state.hsInputCursor + 2) % 3;
+        return true;
+    }
+    if (key === 'ArrowRight' || k === KEY_RIGHT) {
+        state.hsInputCursor = (state.hsInputCursor + 1) % 3;
+        return true;
+    }
+    if (key === 'Enter' || key === ' ') {
+        confirmCallback();
+        return true;
+    }
+    return false;
+}
+
 export const keys = {};
 
-/**
- * initInput(canvas, callbacks)
- * Registers all event listeners. Call once at boot.
- * callbacks: { resetGame, releaseStickyBall }
- * — passed in to avoid circular imports (these functions live in other modules).
- */
-export function initInput(canvas, { resetGame, releaseStickyBall }) {
+export function initInput(canvas, { resetGame, releaseStickyBall, confirmHsEntry, closeHsView }) {
     function releaseAllStuckBalls() {
         state.balls.forEach(ball => { if (ball.stuck) releaseStickyBall(ball); });
     }
 
     window.addEventListener('keydown', (e) => {
+        // US-22 — intercept keys in high score states before anything else
+        if (state.gameState === 'highscore_input') {
+            handleHsInputKey(e.key, confirmHsEntry);
+            e.preventDefault();
+            return;
+        }
+        if (state.gameState === 'highscore_view') {
+            if (e.key === 'h' || e.key === 'H' || e.key === ' ' || e.key === 'Enter' || e.key === 'Escape') {
+                closeHsView();
+            }
+            return;
+        }
+
         keys[e.key.toLowerCase()] = true;
         if (state.balls.some(b => b.stuck) && state.gameState === 'playing') {
             releaseAllStuckBalls();
             return;
         }
-        if (state.gameState === 'start' && !e.key.startsWith('F') && e.key !== 'Dead') {
-            state.gameState = 'playing';
-            return;
+        if (state.gameState === 'start') {
+            if (e.key === 'h' || e.key === 'H') {
+                state.hsFromStartScreen = true;
+                state.hsNewEntryRank    = -1;
+                state.gameState = 'highscore_view';
+                return;
+            }
+            if (!e.key.startsWith('F') && e.key !== 'Dead') {
+                state.gameState = 'playing';
+                return;
+            }
         }
         if (e.key === ' ' && (state.gameState === 'gameover' || state.gameState === 'victory')) {
             resetGame();
@@ -37,6 +83,7 @@ export function initInput(canvas, { resetGame, releaseStickyBall }) {
     });
 
     canvas.addEventListener('mousedown', () => {
+        if (state.gameState === 'highscore_view') { closeHsView(); return; }
         if (state.balls.some(b => b.stuck) && state.gameState === 'playing') {
             releaseAllStuckBalls();
             return;
@@ -58,6 +105,7 @@ export function initInput(canvas, { resetGame, releaseStickyBall }) {
     let paddleStartX = 0;
 
     canvas.addEventListener('touchstart', (e) => {
+        if (state.gameState === 'highscore_view') { closeHsView(); return; }
         if (state.gameState === 'start') { state.gameState = 'playing'; return; }
         if (state.gameState === 'gameover' || state.gameState === 'victory') { resetGame(); return; }
         if (state.balls.some(b => b.stuck)) { releaseAllStuckBalls(); return; }
@@ -78,21 +126,12 @@ export function initInput(canvas, { resetGame, releaseStickyBall }) {
         paddleStartX = 0;
     });
 
-    // -----------------------------------------------------------------------
-    // V3 — Mobile directional buttons (#btnLeft / #btnRight)
-    // Press/hold moves the paddle; handles game state transitions on first tap.
-    // -----------------------------------------------------------------------
     const btnLeft  = document.getElementById('btnLeft');
     const btnRight = document.getElementById('btnRight');
 
     if (btnLeft && btnRight) {
-        /**
-         * handleStateOnButtonPress()
-         * Returns true if the press was consumed by a state transition
-         * (start, gameover, victory, sticky), so the button should NOT
-         * set a movement key.
-         */
         function handleStateOnButtonPress() {
+            if (state.gameState === 'highscore_view') { closeHsView(); return true; }
             if (state.gameState === 'start') {
                 state.gameState = 'playing';
                 return true;
@@ -113,14 +152,12 @@ export function initInput(canvas, { resetGame, releaseStickyBall }) {
                 e.preventDefault();
                 if (!handleStateOnButtonPress()) keys[KEY_LEFT] = true;
             }, { passive: false });
-
             btnRight.addEventListener(evtName, (e) => {
                 e.preventDefault();
                 if (!handleStateOnButtonPress()) keys[KEY_RIGHT] = true;
             }, { passive: false });
         });
 
-        // Release on any end / cancel / leave event
         ['mouseup', 'touchend', 'touchcancel', 'mouseleave'].forEach(evtName => {
             btnLeft.addEventListener(evtName,  () => { keys[KEY_LEFT]  = false; });
             btnRight.addEventListener(evtName, () => { keys[KEY_RIGHT] = false; });
