@@ -415,4 +415,25 @@ export function computeComboMultiplier(comboCount) {
 }
 
 // ---------------------------------------------------------------------------
-// Browser compatibility shim — temporary, removed in 
+// Browser compatibility shim — temporary, removed in step 8
+// Keeps window.GameCore intact so index.html works without modification.
+// ---------------------------------------------------------------------------
+if (typeof window !== 'undefined') {
+  window.GameCore = {
+    buildBricks,
+    checkVictory,
+    computeWallCollisions,
+    computePaddleBounce,
+    computeBrickCollision,
+    computeRowPoints,
+    computeSpeedEffect,
+    checkPowerUpCollection,
+    stickyBallX,
+    spawnExtraBalls,
+    computeBrickCollisionPenetrating,
+    computeExplosionChain,
+    computeTimeMultiplier,
+    computeComboMultiplier,
+    applyHitToBrick,
+  };
+}
