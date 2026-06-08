@@ -4,7 +4,8 @@
 import {
     CANVAS_WIDTH, BALL_SPEED_X, BALL_SPEED_Y, BALL_SPEED_MAG,
     PADDLE_WIDTH, MAX_LIVES,
-    BRICK_ROWS, BRICK_COLS, EXPLOSIVE_BRICK_CHANCE,
+    BRICK_ROWS, BRICK_COLS,
+    EXPLOSIVE_BRICK_CHANCE, MULTIHIT2_CHANCE, MULTIHIT3_CHANCE, // US-23
 } from './constants.js';
 import { buildBricks } from './game-core.js';
 
@@ -25,12 +26,33 @@ function makeBall() {
     };
 }
 
+/**
+ * makeBrickTypes()                                                  US-23
+ * Returns a 2-D array of brick descriptors { type, hitsLeft, maxHits }.
+ * A single uniform roll selects among explosive / multihit3 / multihit2 / normal
+ * so each probability is exact and independent.
+ *
+ * type values:
+ *   'normal'    — standard 1-hit brick
+ *   'explosive' — 1-hit but triggers chain explosion on destruction (US-16)
+ *   'multihit'  — requires maxHits hits before being destroyed (US-23)
+ *   'destroyed' — runtime sentinel set by update.js when brick is removed
+ */
 function makeBrickTypes() {
+    const THRESHOLD_EXPLOSIVE = EXPLOSIVE_BRICK_CHANCE;
+    const THRESHOLD_MH3       = THRESHOLD_EXPLOSIVE + MULTIHIT3_CHANCE;
+    const THRESHOLD_MH2       = THRESHOLD_MH3       + MULTIHIT2_CHANCE;
+
     const types = [];
     for (let r = 0; r < BRICK_ROWS; r++) {
         types[r] = [];
         for (let c = 0; c < BRICK_COLS; c++) {
-            types[r][c] = Math.random() < EXPLOSIVE_BRICK_CHANCE ? 'explosive' : 'normal';
+            const roll = Math.random();
+            let type = 'normal', maxHits = 1;
+            if      (roll < THRESHOLD_EXPLOSIVE) { type = 'explosive'; }
+            else if (roll < THRESHOLD_MH3)       { type = 'multihit'; maxHits = 3; }
+            else if (roll < THRESHOLD_MH2)       { type = 'multihit'; maxHits = 2; }
+            types[r][c] = { type, hitsLeft: maxHits, maxHits };
         }
     }
     return types;
@@ -71,34 +93,4 @@ export const state = {
     livesLostThisLevel: 0,          // used for precision bonus on victory
 };
 
-// ---------------------------------------------------------------------------
-// Reset helpers — called by resetGame() and handleLifeLost()
-// ---------------------------------------------------------------------------
-
-export function resetBallsState() {
-    state.balls = [makeBall()];
-}
-
-export function resetBricksState() {
-    state.bricks     = buildBricks(BRICK_ROWS, BRICK_COLS);
-    state.brickTypes = makeBrickTypes();
-}
-
-export function resetFullState() {
-    state.lives            = MAX_LIVES;
-    state.score            = 0;
-    state.currentSpeedMag  = BALL_SPEED_MAG;
-    state.currentPaddleWidth = PADDLE_WIDTH;
-    state.paddleX          = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
-    state.activePowerUps   = [];
-    state.activeEffects    = {};
-    state.stickyActive     = false;
-    state.gameState        = 'playing';
-    // V3 — reset score multiplier state
-    state.levelStartTime          = 0; // lazily re-initialised in update()
-    state.comboCount              = 0;
-    state.brickHitSinceLastPaddle = false;
-    state.livesLostThisLevel      = 0;
-    resetBallsState();
-    resetBricksState();
-}
+// ---

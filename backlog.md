@@ -513,6 +513,6 @@ Contraintes : solo dev · pas de backend · mobile-friendly · 60 FPS cible
 - Niveaux multiples
 - Briques multi-hit
 - High score persistant (localStorage)
-- Son et musique
+- Son et musique (SFX uniquement)
 - Animations de destruction des briques
-- Classement en ligne
+- Clas

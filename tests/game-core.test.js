@@ -568,13 +568,14 @@ describe('computeBrickCollisionPenetrating — US-13', () => {
 });
 
 describe('computeExplosionChain — US-16', () => {
+  // US-23: brickTypes are now objects { type, hitsLeft, maxHits }
   function makeBrickTypes(rows, cols, explosivePositions = []) {
     const t = [];
     for (let r = 0; r < rows; r++) {
       t[r] = [];
-      for (let c = 0; c < cols; c++) t[r][c] = 'normal';
+      for (let c = 0; c < cols; c++) t[r][c] = { type: 'normal', hitsLeft: 1, maxHits: 1 };
     }
-    explosivePositions.forEach(([r, c]) => { t[r][c] = 'explosive'; });
+    explosivePositions.forEach(([r, c]) => { t[r][c] = { type: 'explosive', hitsLeft: 1, maxHits: 1 }; });
     return t;
   }
 
@@ -607,7 +608,7 @@ describe('computeExplosionChain — US-16', () => {
     const types  = makeBrickTypes(3, 3, [[1, 1]]);
     GameCore.computeExplosionChain(bricks, types, 1, 1, 3, 3);
     expect(bricks[0][0]).toBe(true);
-    expect(types[1][1]).toBe('explosive');
+    expect(types[1][1].type).toBe('explosive'); // US-23: objects, not strings
   });
 
   test('does not include already-destroyed bricks in chain', () => {
@@ -621,6 +622,57 @@ describe('computeExplosionChain — US-16', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Architecture refactoring v2-review — no new pure functions added.
-// R1..R8 are in index.html only. All 72 existing tests remain valid.
+// applyHitToBrick — US-23
 // ---------------------------------------------------------------------------
+describe('applyHitToBrick - US-23', () => {
+  test('does not mutate the brickState object', () => {
+    const brick = { type: 'multihit', hitsLeft: 2, maxHits: 2 };
+    GameCore.applyHitToBrick(brick);
+    expect(brick.hitsLeft).toBe(2);
+  });
+
+  test('returns newHitsLeft decremented by 1', () => {
+    const result = GameCore.applyHitToBrick({ type: 'multihit', hitsLeft: 3, maxHits: 3 });
+    expect(result.newHitsLeft).toBe(2);
+  });
+
+  test('destroyed is false when hitsLeft is greater than 1', () => {
+    const result = GameCore.applyHitToBrick({ type: 'multihit', hitsLeft: 2, maxHits: 2 });
+    expect(result.destroyed).toBe(false);
+  });
+
+  test('destroyed is true when hitsLeft reaches 0', () => {
+    const result = GameCore.applyHitToBrick({ type: 'multihit', hitsLeft: 1, maxHits: 2 });
+    expect(result.destroyed).toBe(true);
+    expect(result.newHitsLeft).toBe(0);
+  });
+
+  test('destroyed is true for a normal 1-hit brick', () => {
+    const result = GameCore.applyHitToBrick({ type: 'normal', hitsLeft: 1, maxHits: 1 });
+    expect(result.destroyed).toBe(true);
+  });
+
+  test('x3 brick first hit: newHitsLeft=2, not destroyed', () => {
+    const result = GameCore.applyHitToBrick({ type: 'multihit', hitsLeft: 3, maxHits: 3 });
+    expect(result.newHitsLeft).toBe(2);
+    expect(result.destroyed).toBe(false);
+  });
+
+  test('x3 brick second hit: newHitsLeft=1, not destroyed', () => {
+    const result = GameCore.applyHitToBrick({ type: 'multihit', hitsLeft: 2, maxHits: 3 });
+    expect(result.newHitsLeft).toBe(1);
+    expect(result.destroyed).toBe(false);
+  });
+
+  test('x3 brick final hit: newHitsLeft=0, destroyed', () => {
+    const result = GameCore.applyHitToBrick({ type: 'multihit', hitsLeft: 1, maxHits: 3 });
+    expect(result.newHitsLeft).toBe(0);
+    expect(result.destroyed).toBe(true);
+  });
+
+  test('x2 brick first hit: newHitsLeft=1, not destroyed', () => {
+    const result = GameCore.applyHitToBrick({ type: 'multihit', hitsLeft: 2, maxHits: 2 });
+    expect(result.newHitsLeft).toBe(1);
+    expect(result.destroyed).toBe(false);
+  });
+});

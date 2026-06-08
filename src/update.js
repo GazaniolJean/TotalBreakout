@@ -45,15 +45,21 @@ function updatePaddle(dt) {
 }
 
 /**
- * handleBrickDestruction(row, col)
- * Marks the brick as destroyed and adds score applying V3 multipliers:
+ * destroyBrick(row, col)                                            US-23
+ * Marks the brick as fully destroyed, adds score with V3 multipliers.
+ * Called when hitsLeft reaches 0 (normal) or by explosion chain (force-destroy).
+ * Does NOT call applyHitToBrick — caller is responsible for hitsLeft bookkeeping.
+ *
+ * V3 multipliers applied:
  *   - time multiplier  : peak ×3 at start, decays to ×0.1 after 4 min
  *   - combo multiplier : ×1 + comboCount × 0.1
- *   - lives bonus      : ×(1 + max(0, lives - 3))  for players with extra lives
+ *   - lives bonus      : ×(1 + max(0, lives - 3))
  */
-function handleBrickDestruction(row, col) {
-    state.bricks[row][col]     = false;
-    state.brickTypes[row][col] = 'destroyed';
+function destroyBrick(row, col) {
+    state.bricks[row][col] = false;
+    const bt   = state.brickTypes[row][col];
+    bt.hitsLeft = 0;
+    bt.type     = 'destroyed';
 
     const basePoints  = ROW_POINTS[row];
     const elapsedMs   = state.levelStartTime ? Date.now() - state.levelStartTime : 0;
@@ -139,36 +145,56 @@ function updateBall(i, dt, deltaTime, destroyedThisFrame) {
     }
 
     if (brickHits !== null) {
-        let anyDestroyed = false;
+        // US-23: distinguish "brick hit" (hitsLeft decremented) from
+        // "brick destroyed" (hitsLeft reached 0).
+        let anyHit      = false; // any brick interacted with (triggers combo flag)
+        let anyDestroyed = false; // any brick fully destroyed (triggers score/HUD/victory)
+
         for (const { row, col } of brickHits.destroyedBricks) {
             const key = row + ',' + col;
             if (!destroyedThisFrame.has(key) && state.bricks[row][col]) {
                 destroyedThisFrame.add(key);
-                const wasExplosive = state.brickTypes[row][col] === 'explosive';
-                handleBrickDestruction(row, col);
-                anyDestroyed = true;
-                if (wasExplosive) {
-                    const chain = _GameCore.computeExplosionChain(state.bricks, state.brickTypes, row, col, BRICK_ROWS, BRICK_COLS);
-                    for (const { row: cr, col: cc } of chain) {
-                        const chainKey = cr + ',' + cc;
-                        if (!destroyedThisFrame.has(chainKey) && state.bricks[cr][cc]) {
-                            destroyedThisFrame.add(chainKey);
-                            handleBrickDestruction(cr, cc);
+                anyHit = true;
+
+                const bt = state.brickTypes[row][col];
+                const { newHitsLeft, destroyed } = _GameCore.applyHitToBrick(bt);
+                bt.hitsLeft = newHitsLeft; // decrement in-place (AC-03)
+
+                if (destroyed) {
+                    anyDestroyed = true;
+                    const wasExplosive = bt.type === 'explosive';
+                    destroyBrick(row, col);
+
+                    if (wasExplosive) {
+                        // AC-07 (US-23): explosion chain force-destroys multi-hit
+                        // bricks immediately, bypassing applyHitToBrick.
+                        const chain = _GameCore.computeExplosionChain(state.bricks, state.brickTypes, row, col, BRICK_ROWS, BRICK_COLS);
+                        for (const { row: cr, col: cc } of chain) {
+                            const chainKey = cr + ',' + cc;
+                            if (!destroyedThisFrame.has(chainKey) && state.bricks[cr][cc]) {
+                                destroyedThisFrame.add(chainKey);
+                                destroyBrick(cr, cc);
+                            }
                         }
                     }
+
+                    if (Math.random() < POWERUP_DROP_CHANCE) {
+                        spawnPowerUp(row, col, POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)]);
+                    }
+                    if (Math.random() < EXTRA_LIFE_DROP_CHANCE) {
+                        spawnPowerUp(row, col, 'extralife');
+                    }
                 }
-                if (Math.random() < POWERUP_DROP_CHANCE) {
-                    spawnPowerUp(row, col, POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)]);
-                }
-                if (Math.random() < EXTRA_LIFE_DROP_CHANCE) {
-                    spawnPowerUp(row, col, 'extralife');
-                }
+                // Non-destroyed multi-hit brick: ball bounces (AC-03), no score.
             }
         }
-        if (anyDestroyed) {
+
+        if (anyHit) {
             state.brickHitSinceLastPaddle = true; // V3 — flag for combo tracking
-            _updateHUD();
             ball.penetration = brickHits.remainingPenetration;
+        }
+        if (anyDestroyed) {
+            _updateHUD();
             if (_GameCore.checkVictory(state.bricks)) {
                 // V3 — precision bonus: no life lost this level
                 if (state.livesLostThisLevel === 0) {
@@ -224,37 +250,4 @@ function handleLifeLost() {
     // V3 — track for precision bonus and reset combo
     state.livesLostThisLevel++;
     state.comboCount              = 0;
-    state.brickHitSinceLastPaddle = false;
-
-    state.lives -= 1;
-    _updateHUD();
-    ['fast', 'slow', 'wide', 'small'].forEach(t => delete state.activeEffects[t]);
-    state.currentSpeedMag    = BALL_SPEED_MAG;
-    state.currentPaddleWidth = PADDLE_WIDTH;
-    state.stickyActive       = false;
-    state.activePowerUps     = [];
-    if (state.lives === 0) {
-        state.activeEffects = {};
-        state.gameState = 'gameover';
-    } else {
-        resetBallsState();
-        state.paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
-    }
-}
-
-export function update(deltaTime) {
-    if (state.gameState !== 'playing') return;
-
-    // V3 — lazily initialise level timer on first playing frame
-    if (state.levelStartTime === 0) state.levelStartTime = Date.now();
-
-    const dt = deltaTime / (1000 / 60);
-    updatePaddle(dt);
-    const destroyedThisFrame = new Set();
-    for (let i = state.balls.length - 1; i >= 0; i--) {
-        updateBall(i, dt, deltaTime, destroyedThisFrame);
-    }
-    if (state.balls.length === 0) { handleLifeLost(); return; }
-    updatePowerUpCapsules(dt);
-    updateTimedEffects(deltaTime);
-}
+    state.brickHi
