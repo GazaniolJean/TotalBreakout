@@ -362,7 +362,8 @@ export function computeExplosionChain(bricks, brickTypes, startRow, startCol, ro
         if (!bricks[nr][nc]) continue; // already destroyed
         destroyed.push({ row: nr, col: nc });
         // If this neighbour is explosive, add to queue for further expansion
-        if (brickTypes[nr][nc] === 'explosive') {
+        // brickTypes cells are objects { type, hitsLeft, maxHits } (US-23)
+        if (brickTypes[nr][nc].type === 'explosive') {
           queue.push({ row: nr, col: nc });
         }
       }
@@ -371,6 +372,19 @@ export function computeExplosionChain(bricks, brickTypes, startRow, startCol, ro
   return destroyed;
 }
 
+
+/**
+ * applyHitToBrick(brickState)                                      US-23
+ * Pure function: decrements hitsLeft by 1 without mutating the object.
+ * Returns { newHitsLeft, destroyed } where destroyed is true when hitsLeft
+ * reaches 0.  Caller is responsible for updating state and awarding score.
+ *
+ * AC-08: does NOT mutate brickState.
+ */
+export function applyHitToBrick(brickState) {
+  const newHitsLeft = brickState.hitsLeft - 1;
+  return { newHitsLeft, destroyed: newHitsLeft <= 0 };
+}
 
 /**
  * computeTimeMultiplier(elapsedMs)
@@ -401,24 +415,4 @@ export function computeComboMultiplier(comboCount) {
 }
 
 // ---------------------------------------------------------------------------
-// Browser compatibility shim — temporary, removed in step 8
-// Keeps window.GameCore intact so index.html works without modification.
-// ---------------------------------------------------------------------------
-if (typeof window !== 'undefined') {
-  window.GameCore = {
-    buildBricks,
-    checkVictory,
-    computeWallCollisions,
-    computePaddleBounce,
-    computeBrickCollision,
-    computeRowPoints,
-    computeSpeedEffect,
-    checkPowerUpCollection,
-    stickyBallX,
-    spawnExtraBalls,
-    computeBrickCollisionPenetrating,
-    computeExplosionChain,
-    computeTimeMultiplier,
-    computeComboMultiplier,
-  };
-}
+// Browser compatibility shim — temporary, removed in 
