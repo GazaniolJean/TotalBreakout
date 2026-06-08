@@ -38,6 +38,7 @@ export function releaseStickyBall(ball) {
     ball.stickyTimer = 0;
 }
 
+/** updatePaddle(dt) — déplace la raquette selon les touches actives et la bloque dans les limites du canvas. */
 function updatePaddle(dt) {
     if (keys[KEY_LEFT]  || keys['arrowleft'])  state.paddleX -= PADDLE_SPEED * dt;
     if (keys[KEY_RIGHT] || keys['arrowright']) state.paddleX += PADDLE_SPEED * dt;
@@ -71,6 +72,12 @@ function destroyBrick(row, col) {
     state.score += Math.round(basePoints * timeMult * comboMult * livesMult);
 }
 
+/**
+ * updateBall(i, dt, deltaTime, destroyedThisFrame)
+ * Traite la physique complète d'une balle : déplacement, rebonds murs/raquette,
+ * collisions briques (standard ou pénétrante), effet sticky, combos et power-ups.
+ * Retourne false si la balle sort du bas (supprimée), true sinon.
+ */
 function updateBall(i, dt, deltaTime, destroyedThisFrame) {
     const ball = state.balls[i];
 
@@ -211,6 +218,7 @@ function updateBall(i, dt, deltaTime, destroyedThisFrame) {
     return true;
 }
 
+/** updatePowerUpCapsules(dt) — fait tomber les capsules actives, active l'effet si la raquette les attrape, les supprime si elles sortent du bas. */
 function updatePowerUpCapsules(dt) {
     for (let i = state.activePowerUps.length - 1; i >= 0; i--) {
         const capsule = state.activePowerUps[i];
@@ -226,6 +234,7 @@ function updatePowerUpCapsules(dt) {
     }
 }
 
+/** updateTimedEffects(deltaTime) — décrémente le timer de chaque effet actif et rétablit les valeurs par défaut (à vitesse, largeur raquette, pénétration) à l'expiration. */
 function updateTimedEffects(deltaTime) {
     for (const type of Object.keys(state.activeEffects)) {
         state.activeEffects[type].remainingMs -= deltaTime;
@@ -246,8 +255,47 @@ function updateTimedEffects(deltaTime) {
     }
 }
 
+/**
+ * handleLifeLost() — appelée quand toutes les balles sont perdues.
+ * Décrémente les vies, réinitialise le combo et les effets actifs.
+ * Passe en 'gameover' si plus de vies, sinon respawn balle + raquette.
+ */
 function handleLifeLost() {
     // V3 — track for precision bonus and reset combo
     state.livesLostThisLevel++;
     state.comboCount              = 0;
-    state.brickHi
+    state.brickHitSinceLastPaddle = false;
+
+    state.lives -= 1;
+    _updateHUD();
+    ['fast', 'slow', 'wide', 'small'].forEach(t => delete state.activeEffects[t]);
+    state.currentSpeedMag    = BALL_SPEED_MAG;
+    state.currentPaddleWidth = PADDLE_WIDTH;
+    state.stickyActive       = false;
+    state.activePowerUps     = [];
+    if (state.lives === 0) {
+        state.activeEffects = {};
+        state.gameState = 'gameover';
+    } else {
+        resetBallsState();
+        state.paddleX = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
+    }
+}
+
+/** update(deltaTime) — tick principal du jeu : raquette, balles, capsules power-up, effets temporisés. Ignore si l'état n'est pas 'playing'. */
+export function update(deltaTime) {
+    if (state.gameState !== 'playing') return;
+
+    // V3 — lazily initialise level timer on first playing frame
+    if (state.levelStartTime === 0) state.levelStartTime = Date.now();
+
+    const dt = deltaTime / (1000 / 60);
+    updatePaddle(dt);
+    const destroyedThisFrame = new Set();
+    for (let i = state.balls.length - 1; i >= 0; i--) {
+        updateBall(i, dt, deltaTime, destroyedThisFrame);
+    }
+    if (state.balls.length === 0) { handleLifeLost(); return; }
+    updatePowerUpCapsules(dt);
+    updateTimedEffects(deltaTime);
+}

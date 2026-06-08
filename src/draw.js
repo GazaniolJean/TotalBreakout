@@ -40,6 +40,7 @@ function drawBrickCracks(brickX, brickY, numCracks) {
     _ctx.lineWidth = 1;
 }
 
+/** drawBricks() — dessine toutes les briques vivantes avec leur couleur de rangée, leur marqueur explosif ou leur overlay multihit (cracks + grisé). */
 export function drawBricks() {
     for (let r = 0; r < BRICK_ROWS; r++) {
         for (let c = 0; c < BRICK_COLS; c++) {
@@ -86,11 +87,13 @@ export function drawBricks() {
     }
 }
 
+/** drawPaddle() — dessine la raquette à sa position et largeur courantes. */
 export function drawPaddle() {
     _ctx.fillStyle = '#ecf0f1';
     _ctx.fillRect(state.paddleX, PADDLE_Y, state.currentPaddleWidth, PADDLE_HEIGHT);
 }
 
+/** drawBalls() — dessine chaque balle ; ajoute un halo rose si elle est collée (sticky) ou violet si elle est en mode pénétration. */
 export function drawBalls() {
     for (const ball of state.balls) {
         _ctx.beginPath();
@@ -119,6 +122,7 @@ export function drawBalls() {
     }
 }
 
+/** drawCapsules() — dessine les capsules power-up en chute libre avec leur couleur et leur étiquette symbole. */
 export function drawCapsules() {
     for (const capsule of state.activePowerUps) {
         _ctx.fillStyle = capsule.color;
@@ -133,6 +137,7 @@ export function drawCapsules() {
     }
 }
 
+/** drawEffectHUD() — affiche en bas à gauche la liste des effets actifs avec leur timer restant en secondes. */
 export function drawEffectHUD() {
     const activeEffectKeys = Object.keys(state.activeEffects);
     if (activeEffectKeys.length === 0) return;
@@ -185,6 +190,7 @@ export function drawScoreMultipliers() {
     _ctx.textBaseline = 'alphabetic';
 }
 
+/** drawOverlay() — affiche l'écran de titre (start), game-over ou victoire par-dessus le canvas selon l'état courant. */
 export function drawOverlay() {
     if (state.gameState === 'start') {
         _ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
@@ -206,4 +212,55 @@ export function drawOverlay() {
         _ctx.fillText('Mobile : boutons ou glisser', cx, cy + 64);
         _ctx.fillStyle = '#f1c40f';
         _ctx.font = '18px monospace';
-        _ctx.fillText('Appuie sur ESPACE ou clique pour commencer', cx, c
+        _ctx.fillText('Appuie sur ESPACE ou clique pour commencer', cx, cy + 112);
+        _ctx.textAlign = 'left';
+        _ctx.textBaseline = 'alphabetic';
+    }
+    if (state.gameState === 'gameover') {
+        _ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+        _ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        _ctx.fillStyle = '#e74c3c';
+        _ctx.font = 'bold 48px monospace';
+        _ctx.textAlign = 'center';
+        _ctx.textBaseline = 'middle';
+        _ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 60);
+        _ctx.fillStyle = '#ffffff';
+        _ctx.font = '28px monospace';
+        _ctx.fillText('Score : ' + state.score, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+        _ctx.fillStyle = '#aaaaaa';
+        _ctx.font = '18px monospace';
+        _ctx.fillText('Appuie sur ESPACE pour rejouer', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 50);
+        _ctx.textAlign = 'left';
+        _ctx.textBaseline = 'alphabetic';
+    } else if (state.gameState === 'victory') {
+        _ctx.fillStyle = 'rgba(0, 40, 0, 0.7)';
+        _ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        _ctx.textAlign = 'center';
+        _ctx.textBaseline = 'middle';
+        _ctx.fillStyle = '#2ecc71';
+        _ctx.font = 'bold 48px monospace';
+        _ctx.fillText('YOU WIN !', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 50);
+        _ctx.fillStyle = '#ffffff';
+        _ctx.font = '28px monospace';
+        _ctx.fillText('Score : ' + state.score, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
+        _ctx.fillStyle = '#aaaaaa';
+        _ctx.font = '18px monospace';
+        _ctx.fillText('Appuie sur ESPACE pour rejouer', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 60);
+        _ctx.textAlign = 'left';
+        _ctx.textBaseline = 'alphabetic';
+    }
+}
+
+/** draw() — frame de rendu complète : efface le canvas puis appelle toutes les sous-fonctions de dessin dans le bon ordre. */
+export function draw() {
+    _ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    _ctx.fillStyle = '#0d0d1a';
+    _ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    drawBricks();
+    drawPaddle();
+    drawBalls();
+    drawCapsules();
+    drawEffectHUD();
+    drawScoreMultipliers(); // V3
+    drawOverlay();
+}
