@@ -670,3 +670,85 @@ describe('buildLevelGrid - US-24', () => {
     expect(bricks[0].length).toBe(10);
   });
 });
+
+// ---------------------------------------------------------------------------
+// spawnBrickParticles / advanceParticles - US-25
+// ---------------------------------------------------------------------------
+describe('spawnBrickParticles - US-25', () => {
+  const mid = () => 0.5; // rng fn; jitter = (0.5*2-1)=0 → no angular jitter
+
+  test('emits exactly `count` particles', () => {
+    const parts = GameCore.spawnBrickParticles(100, 50, '#e74c3c', 6, 3, 15, 400, 4, mid);
+    expect(parts.length).toBe(6);
+  });
+
+  test('all particles start at the brick centre with age 0', () => {
+    const parts = GameCore.spawnBrickParticles(120, 80, '#abc', 6, 3, 15, 400, 4, mid);
+    expect(parts.every(p => p.x === 120 && p.y === 80 && p.age === 0)).toBe(true);
+  });
+
+  test('particles carry the given color, size and lifetime', () => {
+    const parts = GameCore.spawnBrickParticles(0, 0, '#2ecc71', 6, 3, 15, 400, 4, mid);
+    expect(parts.every(p => p.color === '#2ecc71' && p.size === 4 && p.lifetime === 400)).toBe(true);
+  });
+
+  test('initial speed magnitude equals the requested speed', () => {
+    const speed = 3;
+    const parts = GameCore.spawnBrickParticles(0, 0, '#fff', 6, speed, 15, 400, 4, () => 0.5);
+    for (const p of parts) {
+      expect(Math.hypot(p.vx, p.vy)).toBeCloseTo(speed, 6);
+    }
+  });
+
+  test('with zero jitter, angles are evenly spread over 360°', () => {
+    const parts = GameCore.spawnBrickParticles(0, 0, '#fff', 4, 1, 15, 400, 4, () => 0.5);
+    // count=4 → angles 0, 90, 180, 270 deg → vx/vy follow cos/sin
+    expect(parts[0].vx).toBeCloseTo(1, 6);
+    expect(parts[0].vy).toBeCloseTo(0, 6);
+    expect(parts[1].vx).toBeCloseTo(0, 6);
+    expect(parts[1].vy).toBeCloseTo(1, 6);
+  });
+
+  test('jitter stays within ±spreadDeg', () => {
+    const spreadDeg = 15;
+    const hi = GameCore.spawnBrickParticles(0, 0, '#fff', 6, 1, spreadDeg, 400, 4, () => 1); // jitter = +spread
+    const baseAngle0 = 0;
+    const expected = baseAngle0 + (spreadDeg * Math.PI) / 180;
+    expect(Math.atan2(hi[0].vy, hi[0].vx)).toBeCloseTo(expected, 6);
+  });
+});
+
+describe('advanceParticles - US-25', () => {
+  const mk = (over = {}) => ({ x: 100, y: 100, vx: 3, vy: 0, age: 0, lifetime: 400, color: '#fff', size: 4, ...over });
+
+  test('integrates position by vx*dt / vy*dt', () => {
+    const p = mk({ vx: 3, vy: -2 });
+    const alive = GameCore.advanceParticles([p], 1, 16, 1.0); // friction 1 → no decay
+    expect(alive[0].x).toBeCloseTo(103, 6);
+    expect(alive[0].y).toBeCloseTo(98, 6);
+  });
+
+  test('applies per-frame friction (friction^dt)', () => {
+    const p = mk({ vx: 10, vy: 0 });
+    GameCore.advanceParticles([p], 1, 16, 0.9);
+    expect(p.vx).toBeCloseTo(9, 6); // 10 * 0.9^1
+  });
+
+  test('ages particles by deltaTime', () => {
+    const p = mk({ age: 0 });
+    GameCore.advanceParticles([p], 1, 100, 0.92);
+    expect(p.age).toBe(100);
+  });
+
+  test('removes particles whose age reaches lifetime', () => {
+    const young = mk({ age: 0, lifetime: 400 });
+    const old   = mk({ age: 390, lifetime: 400 });
+    const alive = GameCore.advanceParticles([young, old], 1, 16, 0.92);
+    expect(alive.length).toBe(1);
+    expect(alive[0]).toBe(young);
+  });
+
+  test('empty input returns empty array', () => {
+    expect(GameCore.advanceParticles([], 1, 16, 0.92)).toEqual([]);
+  });
+});

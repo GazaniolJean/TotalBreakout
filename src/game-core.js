@@ -307,3 +307,53 @@ export function buildLevelGrid(config, rows = 5, cols = 10, rng = Math.random) {
   }
   return { bricks, brickTypes };
 }
+
+/**
+ * spawnBrickParticles(cx, cy, color, count, speed, spreadDeg, lifetime, size, rng)
+ *                                                                   US-25
+ * Pure: returns `count` particle objects emitted from (cx, cy), evenly spread
+ * over 360° with a ±spreadDeg random angular jitter (AC-01). Each particle is a
+ * square of the given color/size with constant initial speed and a fresh age=0
+ * lifetime (AC-02). rng defaults to Math.random; inject in tests.
+ */
+export function spawnBrickParticles(cx, cy, color, count, speed, spreadDeg, lifetime, size = 4, rng = Math.random) {
+  const particles = [];
+  const spreadRad = (spreadDeg * Math.PI) / 180;
+  for (let i = 0; i < count; i++) {
+    const baseAngle = (i / count) * Math.PI * 2;       // even 360° spread
+    const jitter    = (rng() * 2 - 1) * spreadRad;      // ±spreadDeg
+    const angle     = baseAngle + jitter;
+    particles.push({
+      x: cx, y: cy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      age: 0,
+      lifetime,
+      color,
+      size,
+    });
+  }
+  return particles;
+}
+
+/**
+ * advanceParticles(particles, dt, deltaTime, friction)             US-25
+ * Advances every particle one frame: integrates position, applies per-frame
+ * friction (friction^dt for frame-rate independence) and ages it by deltaTime.
+ * Returns a new array containing only the particles still alive (age < lifetime).
+ * Particle objects are mutated in place; they have no interaction with the ball,
+ * paddle or bricks (AC-06).
+ */
+export function advanceParticles(particles, dt, deltaTime, friction) {
+  const alive = [];
+  const decay = Math.pow(friction, dt);
+  for (const p of particles) {
+    p.x  += p.vx * dt;
+    p.y  += p.vy * dt;
+    p.vx *= decay;
+    p.vy *= decay;
+    p.age += deltaTime;
+    if (p.age < p.lifetime) alive.push(p);
+  }
+  return alive;
+}

@@ -515,4 +515,201 @@ Contraintes : solo dev · pas de backend · mobile-friendly · 60 FPS cible
 - High score persistant (localStorage)
 - Son et musique (SFX uniquement)
 - Animations de destruction des briques
-- Clas
+- Classement en ligne
+
+---
+
+---
+
+## Ordre de développement v4 — Scoring & Polish
+
+| # | User Story | Statut |
+|---|-----------|--------|
+| US-22 | High score retro (initiales + localStorage) | ✅ Fait |
+| US-23 | Briques multi-hit (×2 et ×3) | ✅ Fait |
+| US-24 | Niveaux multiples (3 layouts fixes) | ✅ Fait |
+| US-25 | Animations de destruction des briques | ✅ Fait |
+| US-26 | SFX — Effets sonores | ⬜ À faire |
+
+---
+
+## US-22 · High score retro (initiales + localStorage)
+
+**En tant que** joueur, **je veux** voir mon score apparaître dans un tableau des meilleurs scores style arcade **afin de** me mesurer à mes performances passées et ressentir la fierté d'un bon run.
+
+**Dépendances :** US-05, US-06, US-24
+
+### Acceptance Criteria
+
+- AC-01 — Le tableau contient les 10 meilleurs scores, persistés dans `localStorage` sous la clé `breakout_highscores`. Chaque entrée est `{ initials: string, score: number, level: number }`.
+- AC-02 — À la fin d'une partie (game over ou victory), si le score est dans le top 10, l'écran de saisie des initiales s'affiche avant l'overlay habituel.
+- AC-03 — La saisie des initiales est composée de 3 champs de lettres A–Z navigables : Q/D ou flèches gauche/droite pour changer de champ actif, flèches haut/bas pour incrémenter/décrémenter la lettre, Espace ou Entrée pour valider. Sur mobile, des boutons ◀ ▶ ▲ ▼ et VALIDER sont affichés.
+- AC-04 — Le champ actif est mis en évidence par un curseur clignotant (style rétro, 500ms on/off). Les deux autres champs sont affichés en grisé.
+- AC-05 — Le tableau des scores est affiché en overlay retro : fond noir opaque, police monospace, texte vert `#00FF41`, titre `▸ HIGH SCORES ◂` centré, colonnes `RANK · INITIALS · SCORE · LVL` avec alignement fixe.
+- AC-06 — Le tableau est accessible depuis l'écran de démarrage via la touche `H` ou un label `[H] HIGH SCORES` affiché dans l'overlay start. Un appui supplémentaire (Espace, Entrée, tap) ferme le tableau et revient à l'écran de démarrage.
+- AC-07 — Si aucun score n'est enregistré, les 10 entrées affichent `AAA` · `---` · `LV1` comme placeholder.
+- AC-08 — La nouvelle entrée est mise en surbrillance dans le tableau (texte jaune `#FFD700`) lors de son premier affichage.
+- AC-09 — La fonction `insertHighScore(scores, entry)` dans `game-core.js` retourne un nouveau tableau trié sans muter l'original, testable unitairement.
+- AC-10 — `resetGame()` ne remet pas à zéro les high scores (persistance inter-parties).
+
+### Hors scope
+- Classement en ligne
+- Timestamps ou dates d'entrée
+- Suppression manuelle des scores
+
+### Notes design
+- Les initiales en 3 lettres sont le standard arcade depuis 1978 (Space Invaders). Ne pas proposer une saisie texte libre — ça casse l'ambiance rétro.
+- `level: number` dans l'entrée est requis dès maintenant car US-24 (niveaux multiples) le rend pertinent.
+
+---
+
+## US-23 · Briques multi-hit (×2 et ×3)
+
+**En tant que** joueur, **je veux** que certaines briques nécessitent plusieurs coups pour être détruites **afin de** rencontrer des obstacles plus tenaces qui diversifient le gameplay.
+
+**Dépendances :** US-04, US-16
+
+### Acceptance Criteria
+
+- AC-01 — Le schéma de `brickTypes[r][c]` est étendu en `{ type: 'normal'|'explosive'|'multihit', hitsLeft: number, maxHits: number }`. Les briques normales ont `hitsLeft: 1, maxHits: 1`. Ce changement est rétrocompatible avec US-16.
+- AC-02 — Deux variantes existent : **Résistante** (`maxHits: 2`) et **Blindée** (`maxHits: 3`). Leurs probabilités d'apparition sont `MULTIHIT2_CHANCE` (défaut `0.10`) et `MULTIHIT3_CHANCE` (défaut `0.05`), indépendantes de `EXPLOSIVE_BRICK_CHANCE`.
+- AC-03 — Chaque hit décrémente `hitsLeft` de 1. La brique n'est détruite (retirée de la grille) que quand `hitsLeft === 0`. La balle rebondit normalement à chaque hit intermédiaire.
+- AC-04 — Retour visuel progressif sur la brique selon `hitsLeft / maxHits` : à 2/3 vie → couleur de rangée normale ; à 1/3 vie → teinte grisée (`rgba(blanc, 0.4)` superposée) + deux lignes de craquelure diagonales dessinées sur la brique. Aucune librairie externe.
+- AC-05 — Le score (`ROW_POINTS[r]`) n'est accordé qu'à la destruction complète (`hitsLeft === 0`), pas aux hits intermédiaires.
+- AC-06 — Le power-up **Pénétration** (US-13) : chaque brique multi-hit traversée consomme 1 charge de pénétration ET décrémente `hitsLeft` de 1. La brique n'est détruite que si `hitsLeft === 0`.
+- AC-07 — Les briques multi-hit adjacentes à une brique explosive (US-16) sont **détruites immédiatement** par l'explosion (pas de réduction de `hitsLeft`), pour préserver le caractère spectaculaire des chaînes.
+- AC-08 — La fonction `applyHitToBrick(brickState)` dans `game-core.js` retourne `{ newHitsLeft, destroyed: boolean }` sans muter l'objet passé, testable unitairement.
+- AC-09 — Les briques multi-hit peuvent coexister avec les briques explosives dans la même grille sans conflit de rendu ni de logique.
+- AC-10 — `brickTypes` est régénéré lors de `resetGame()` (comportement inchangé par rapport à US-16).
+
+### Hors scope
+- Briques indestructibles (×∞)
+- Animation de crack progressive (apparition instantanée au changement d'état)
+- Son de rebond différent sur une brique multi-hit
+
+### Notes design
+- AC-07 est un choix de design délibéré : si l'explosion devait respecter les HP, les chaînes perdent leur caractère "dévastateur". À réévaluer au playtest.
+- `MULTIHIT3_CHANCE = 0.05` sur une grille 10×5 = ~2-3 briques blindées en moyenne. Suffisant pour être remarquable sans frustrer.
+
+---
+
+## US-24 · Niveaux multiples (3 layouts fixes)
+
+**En tant que** joueur, **je veux** progresser à travers 3 niveaux de difficulté croissante **afin de** vivre une montée en tension et avoir un objectif de progression clair.
+
+**Dépendances :** US-07, US-22, US-23
+
+### Acceptance Criteria
+
+- AC-01 — Chaque niveau est défini par une structure déclarative `LEVEL_CONFIG` (tableau de 3 objets) dans `constants.js` : `{ name: string, ballSpeedMult: number, explosive_chance: number, multihit2_chance: number, multihit3_chance: number, layout: null|Array }`. `layout: null` signifie grille générée procéduralement avec les chances configurées ; un tableau explicite impose un layout fixe.
+- AC-02 — Paramètres des 3 niveaux par défaut :
+  - Niveau 1 : `ballSpeedMult: 1.0`, `explosive: 0.08`, `multihit2: 0.10`, `multihit3: 0.00` — identique à la v3.
+  - Niveau 2 : `ballSpeedMult: 1.15`, `explosive: 0.12`, `multihit2: 0.15`, `multihit3: 0.05`.
+  - Niveau 3 : `ballSpeedMult: 1.30`, `explosive: 0.15`, `multihit2: 0.20`, `multihit3: 0.12`.
+- AC-03 — À la victoire d'un niveau (toutes les briques détruites), si un niveau suivant existe : overlay `LEVEL COMPLETE` (2 secondes, fond vert semi-transparent), puis transition vers le niveau suivant. La balle, la raquette et le score sont réinitialisés à leur état de début de niveau (score cumulatif préservé, vies préservées).
+- AC-04 — Le score est **cumulatif** sur toute la session. `levelStartScore` est mémorisé au début de chaque niveau pour permettre l'affichage du score du niveau seul dans l'overlay `LEVEL COMPLETE`.
+- AC-05 — Après le niveau 3, l'overlay `YOU WIN !` final affiche le score cumulatif total. C'est à ce moment que le high score est évalué (US-22).
+- AC-06 — Le HUD affiche le numéro de niveau courant (ex. `LV 2`) dans le DOM, en face du score.
+- AC-07 — `resetGame()` revient au niveau 1 avec score remis à 0.
+- AC-08 — `levelStartTime` (US-17) est réinitialisé à chaque début de niveau, pas seulement en début de partie.
+- AC-09 — La fonction `buildLevelGrid(config)` dans `game-core.js` retourne `{ bricks, brickTypes }` à partir d'un `LEVEL_CONFIG` entry, testable unitairement. Elle remplace la logique de génération inline actuelle.
+
+### Hors scope
+- Niveaux procéduraux infinis
+- Éditeur de niveaux (candidat v5)
+- Cinématiques entre niveaux
+
+### Notes design
+- AC-01 : `layout: null` pour les 3 niveaux par défaut — le layout fixe est réservé à l'éditeur v5. Les chances configurables suffisent à donner une personnalité à chaque niveau.
+- AC-08 est critique : sans reset du timer, le multiplicateur temporel (US-17) serait injustement pénalisant au niveau 3.
+
+---
+
+## US-25 · Animations de destruction des briques
+
+**En tant que** joueur, **je veux** que les briques explosent visuellement à leur destruction **afin de** ressentir un retour satisfaisant à chaque coup.
+
+**Dépendances :** US-04, US-16
+
+### Acceptance Criteria
+
+- AC-01 — À la destruction d'une brique, 6 particules sont émises depuis son centre dans des directions uniformément réparties (360° / 6) avec une légère dispersion aléatoire (±15°).
+- AC-02 — Chaque particule est un carré 4×4px de la couleur de la brique détruite. Elle a une vitesse initiale `PARTICLE_SPEED` (constante, défaut `3px/frame`), une décélération `PARTICLE_FRICTION` (défaut `0.92` multiplicateur par frame), une durée de vie `PARTICLE_LIFETIME` (défaut `400ms`). Opacité décroissante linéairement de 1.0 à 0.
+- AC-03 — Les particules sont stockées dans `state.particles[]`. `update(deltaTime)` met à jour positions et durées de vie ; `draw()` rend les particules après les briques et avant le HUD.
+- AC-04 — Pour les destructions en chaîne explosive (US-16), un **flash blanc** (`rgba(255,255,255,0.6)`) est affiché 1 frame sur la zone de la brique détruite indirectement, sans émettre de particules (performances).
+- AC-05 — Le nombre maximal de particules actives simultanément est plafonné à `MAX_PARTICLES = 200`. Si la limite est atteinte, les nouvelles particules écrasent les plus anciennes (ring buffer).
+- AC-06 — Les particules sont purement visuelles : elles n'ont aucune interaction avec la balle, la raquette ou d'autres briques.
+- AC-07 — `state.particles` est vidé lors de `resetGame()` et lors des transitions de niveau (US-24).
+- AC-08 — Aucune régression sur les 60 FPS cibles à densité normale de destruction (mesurable via `performance.now()` dans la boucle de jeu).
+
+### Hors scope
+- Particules sur les rebonds mur/raquette
+- Particules de tailles ou formes différentes selon le type de brique
+- Traînée de particules sur la balle
+
+### Notes design
+- `PARTICLE_FRICTION = 0.92` donne ~12 frames de mouvement perceptible avant quasi-arrêt — suffisant pour être satisfaisant sans encombrer l'écran.
+- AC-04 : émettre 6 particules × N briques détruites par explosion serait trop coûteux visuellement et en perf. Le flash est le bon compromis.
+
+---
+
+## US-26 · SFX — Effets sonores
+
+**En tant que** joueur, **je veux** entendre des effets sonores à chaque action clé du jeu **afin de** renforcer le retour sensoriel et l'ambiance arcade.
+
+**Dépendances :** US-02, US-04, US-09, US-05
+
+### Acceptance Criteria
+
+- AC-01 — Tous les sons sont synthétisés via **Web Audio API** (`AudioContext`), sans fichiers audio externes.
+- AC-02 — Sons implémentés :
+
+  | Événement | Forme d'onde | Fréq. / Durée | Notes |
+  |---|---|---|---|
+  | Rebond mur | carré | 440Hz / 40ms | Bip court et sec |
+  | Rebond raquette | carré | 520Hz / 40ms | Légèrement plus aigu |
+  | Destruction brique | triangle | 800→200Hz sweep / 80ms | Descente rapide |
+  | Collecte power-up | sinus | 600→900Hz sweep / 120ms | Montée joyeuse |
+  | Perte de vie | sinus | 200Hz / 300ms + envelope | Son grave avec fadeout |
+  | Explosion (chaîne) | bruit blanc | 80ms | Court burst |
+  | Game Over | triangle | mélodie descendante 3 notes / 600ms | C5→A4→F4 |
+  | Victory | triangle | mélodie ascendante 3 notes / 600ms | C5→E5→G5 |
+
+- AC-03 — L'`AudioContext` est créé à la première interaction utilisateur (keydown, click, touch) pour respecter la politique autoplay des navigateurs. Avant cette interaction, les appels à `playSound()` sont ignorés silencieusement.
+- AC-04 — Un bouton mute `🔊` / `🔇` est affiché dans le HUD DOM (coin supérieur droit). La touche `M` bascule également le mute. L'état est persisté dans `localStorage` sous `breakout_muted`.
+- AC-05 — `playSound(name)` est la seule API publique du module son (`src/audio.js`). Elle ne lève aucune exception si `AudioContext` n'est pas disponible (fallback silencieux).
+- AC-06 — Le module `audio.js` est initialisé dans `main.js` via `initAudio()` ; aucun autre module n'importe `AudioContext` directement.
+- AC-07 — Sur les navigateurs sans Web Audio API, le jeu fonctionne normalement sans son (pas d'erreur bloquante).
+
+### Hors scope
+- Musique de fond (trop complexe, risque de nuire à l'expérience sans soin particulier)
+- Sons différents par type de brique ou par power-up individuel
+- Réglage du volume (on/off suffit)
+
+### Notes design
+- AC-03 est non négociable : Chrome bloque les `AudioContext` créés avant interaction. L'ignorer cause une erreur silencieuse qui fait croire que l'audio fonctionne alors qu'il ne produit rien.
+- Les formes d'onde "carré" et "triangle" sont délibérées : elles sonnent 8-bit et renforcent l'ambiance rétro sans effort de design sonore.
+
+---
+
+---
+
+## Hors scope v4 — Candidats v5
+
+### Éditeur de niveaux
+
+Permettre aux joueurs de créer et partager leurs propres niveaux directement dans le navigateur.
+
+**Prérequis techniques à préparer dès la v4 :**
+- Les niveaux doivent être définis dans une structure déclarative (ex. JSON) et non hard-codés — l'éditeur produit ce même format
+- `brickTypes[r][c]` doit utiliser un schéma extensible dès v4 (`{ type, hits }`) pour éviter un refactoring en v5
+
+**Scope envisagé :**
+- Grille cliquable pour placer / effacer des briques
+- Sélecteur de type : normale, multi-hit (×2, ×3), explosive
+- Export / import JSON via localStorage ou copier-coller
+- Bouton "Tester ce niveau" qui charge la grille directement en partie
+
+**Hors scope v5 :**
+- Classement en ligne des niveaux partagés (nécessite un backend)
+- Éditeur de power-ups ou de paramètres physiques

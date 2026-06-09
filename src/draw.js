@@ -73,6 +73,34 @@ export function drawBricks() {
     }
 }
 
+/**
+ * drawExplosionFlashes()                                          US-25
+ * Renders the 1-frame white flashes for bricks destroyed by an explosion
+ * chain (AC-04). Drawn after the bricks, before the ball/HUD.
+ */
+export function drawExplosionFlashes() {
+    if (state.particleFlashes.length === 0) return;
+    _ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    for (const f of state.particleFlashes) {
+        _ctx.fillRect(f.x, f.y, f.w, f.h);
+    }
+}
+
+/**
+ * drawParticles()                                                 US-25
+ * Renders every active destruction particle as a fading colored square (AC-02).
+ * Opacity decreases linearly from 1.0 to 0 over the particle's lifetime.
+ */
+export function drawParticles() {
+    for (const p of state.particles) {
+        const opacity = Math.max(0, 1 - p.age / p.lifetime);
+        _ctx.globalAlpha = opacity;
+        _ctx.fillStyle = p.color;
+        _ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    }
+    _ctx.globalAlpha = 1;
+}
+
 export function drawPaddle() {
     _ctx.fillStyle = '#ecf0f1';
     _ctx.fillRect(state.paddleX, PADDLE_Y, state.currentPaddleWidth, PADDLE_HEIGHT);
@@ -387,6 +415,8 @@ export function draw() {
     _ctx.fillStyle = '#0d0d1a';
     _ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     drawBricks();
+    drawExplosionFlashes(); // US-25 (AC-04)
+    drawParticles();        // US-25 (AC-03: after bricks, before HUD)
     drawPaddle();
     drawBalls();
     drawCapsules();
