@@ -232,3 +232,78 @@ export function insertHighScore(scores, entry) {
   newScores.sort((a, b) => b.score - a.score);
   return newScores.slice(0, 10);
 }
+
+/**
+ * brickFromLayoutCode(code)                                        US-24
+ * Maps a fixed-layout cell code to a brick descriptor, or null for an empty cell.
+ *   null | 0 | '' | '.'      → empty (no brick)
+ *   'N' | 'normal'           → normal brick
+ *   'E' | 'explosive'        → explosive brick
+ *   '2' | 'multihit2'        → resistant brick (maxHits 2)
+ *   '3' | 'multihit3'        → armored brick   (maxHits 3)
+ */
+function brickFromLayoutCode(code) {
+  switch (code) {
+    case 'N': case 'normal':    return { type: 'normal',    hitsLeft: 1, maxHits: 1 };
+    case 'E': case 'explosive': return { type: 'explosive', hitsLeft: 1, maxHits: 1 };
+    case '2': case 'multihit2': return { type: 'multihit',  hitsLeft: 2, maxHits: 2 };
+    case '3': case 'multihit3': return { type: 'multihit',  hitsLeft: 3, maxHits: 3 };
+    default:                    return null; // empty cell
+  }
+}
+
+/**
+ * buildLevelGrid(config, rows, cols, rng)                          US-24
+ * Pure: builds a fresh brick grid from a LEVEL_CONFIG entry.
+ * Returns { bricks, brickTypes } where bricks[r][c] is a boolean (alive) and
+ * brickTypes[r][c] = { type, hitsLeft, maxHits }. Replaces the previous inline
+ * generation logic (state.js makeBrickTypes). Does NOT mutate config.
+ *
+ * - config.layout === null → procedural grid using config.explosive_chance,
+ *   config.multihit2_chance and config.multihit3_chance. All cells alive.
+ * - config.layout is a 2-D array → fixed layout; rows/cols derive from it.
+ *   Each cell is a code understood by brickFromLayoutCode (null = empty).
+ *
+ * rng defaults to Math.random; inject a deterministic generator in tests.
+ */
+export function buildLevelGrid(config, rows = 5, cols = 10, rng = Math.random) {
+  // --- Fixed layout path (reserved for the v5 editor) ---
+  if (Array.isArray(config.layout)) {
+    const layout = config.layout;
+    const bricks = [];
+    const brickTypes = [];
+    for (let r = 0; r < layout.length; r++) {
+      bricks[r] = [];
+      brickTypes[r] = [];
+      for (let c = 0; c < layout[r].length; c++) {
+        const desc = brickFromLayoutCode(layout[r][c]);
+        bricks[r][c] = desc !== null;
+        brickTypes[r][c] = desc !== null ? desc : { type: 'normal', hitsLeft: 1, maxHits: 1 };
+      }
+    }
+    return { bricks, brickTypes };
+  }
+
+  // --- Procedural path ---
+  // A single uniform roll selects among explosive / multihit3 / multihit2 / normal
+  // so each probability is exact and independent.
+  const tExplosive = config.explosive_chance;
+  const tMH3       = tExplosive + config.multihit3_chance;
+  const tMH2       = tMH3       + config.multihit2_chance;
+  const bricks = [];
+  const brickTypes = [];
+  for (let r = 0; r < rows; r++) {
+    bricks[r] = [];
+    brickTypes[r] = [];
+    for (let c = 0; c < cols; c++) {
+      bricks[r][c] = true;
+      const roll = rng();
+      let type = 'normal', maxHits = 1;
+      if      (roll < tExplosive) { type = 'explosive'; }
+      else if (roll < tMH3)       { type = 'multihit'; maxHits = 3; }
+      else if (roll < tMH2)       { type = 'multihit'; maxHits = 2; }
+      brickTypes[r][c] = { type, hitsLeft: maxHits, maxHits };
+    }
+  }
+  return { bricks, brickTypes };
+}

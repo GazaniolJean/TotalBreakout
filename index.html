@@ -54,6 +54,20 @@
             min-width: 80px;
         }
 
+        /* US-24 — level indicator, sits next to the score */
+        #levelDisplay {
+            font-family: monospace;
+            font-size: 18px;
+            color: #f1c40f;
+            letter-spacing: 1px;
+            margin-right: 12px;
+        }
+
+        #hudLeft {
+            display: flex;
+            align-items: center;
+        }
+
         /* V3 — Combo display (center HUD) */
         #comboDisplay {
             font-family: monospace;
@@ -121,7 +135,10 @@
 <body>
     <div id="gameWrapper">
       <div id="gameHUD">
-        <span id="scoreDisplay">0</span>
+        <span id="hudLeft">
+          <span id="levelDisplay">LV 1</span>
+          <span id="scoreDisplay">0</span>
+        </span>
         <span id="comboDisplay"></span>
         <span id="livesDisplay"></span>
       </div>

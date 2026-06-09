@@ -5,9 +5,9 @@ import {
     CANVAS_WIDTH, BALL_SPEED_X, BALL_SPEED_Y, BALL_SPEED_MAG,
     PADDLE_WIDTH, MAX_LIVES,
     BRICK_ROWS, BRICK_COLS,
-    EXPLOSIVE_BRICK_CHANCE, MULTIHIT2_CHANCE, MULTIHIT3_CHANCE,
+    LEVEL_CONFIG, // US-24
 } from './constants.js';
-import { buildBricks } from './game-core.js';
+import { buildLevelGrid } from './game-core.js';
 
 function makeBall() {
     return {
@@ -22,24 +22,8 @@ function makeBall() {
     };
 }
 
-function makeBrickTypes() {
-    const THRESHOLD_EXPLOSIVE = EXPLOSIVE_BRICK_CHANCE;
-    const THRESHOLD_MH3       = THRESHOLD_EXPLOSIVE + MULTIHIT3_CHANCE;
-    const THRESHOLD_MH2       = THRESHOLD_MH3       + MULTIHIT2_CHANCE;
-    const types = [];
-    for (let r = 0; r < BRICK_ROWS; r++) {
-        types[r] = [];
-        for (let c = 0; c < BRICK_COLS; c++) {
-            const roll = Math.random();
-            let type = 'normal', maxHits = 1;
-            if      (roll < THRESHOLD_EXPLOSIVE) { type = 'explosive'; }
-            else if (roll < THRESHOLD_MH3)       { type = 'multihit'; maxHits = 3; }
-            else if (roll < THRESHOLD_MH2)       { type = 'multihit'; maxHits = 2; }
-            types[r][c] = { type, hitsLeft: maxHits, maxHits };
-        }
-    }
-    return types;
-}
+// US-24 — build the level-1 grid for the initial state
+const _initGrid = buildLevelGrid(LEVEL_CONFIG[0], BRICK_ROWS, BRICK_COLS);
 
 export const state = {
     balls: [makeBall()],
@@ -49,8 +33,8 @@ export const state = {
     lives: MAX_LIVES,
     score: 0,
     gameState: 'start',
-    bricks: buildBricks(BRICK_ROWS, BRICK_COLS),
-    brickTypes: makeBrickTypes(),
+    bricks: _initGrid.bricks,
+    brickTypes: _initGrid.brickTypes,
     activePowerUps: [],
     activeEffects: {},
     stickyActive: false,
@@ -58,6 +42,11 @@ export const state = {
     comboCount: 0,
     brickHitSinceLastPaddle: false,
     livesLostThisLevel: 0,
+    // US-24 — level progression
+    level: 1,                      // current level (1-indexed)
+    levelStartScore: 0,            // cumulative score at the start of the level
+    baseSpeedMag: BALL_SPEED_MAG,  // ball base magnitude for the current level
+    levelCompleteTimer: 0,         // ms left on the LEVEL COMPLETE overlay
     // High scores (US-22)
     hsInputLetters: ['A', 'A', 'A'],
     hsInputCursor: 0,
@@ -66,33 +55,70 @@ export const state = {
     hsFromStartScreen: false,
 };
 
+/**
+ * resetBallsState() — respawns a single ball at the level's base speed.
+ * Called after a life loss; scales the ball to baseSpeedMag so the level
+ * speed multiplier (US-24) is preserved across respawns.
+ */
 export function resetBallsState() {
     state.balls = [makeBall()];
+    const mult = state.baseSpeedMag / BALL_SPEED_MAG;
+    if (mult !== 1) {
+        state.balls[0].vx *= mult;
+        state.balls[0].vy *= mult;
+    }
 }
 
+/** resetBricksState() — rebuilds the grid for the current level (US-24). */
 export function resetBricksState() {
-    state.bricks     = buildBricks(BRICK_ROWS, BRICK_COLS);
-    state.brickTypes = makeBrickTypes();
+    const grid = buildLevelGrid(LEVEL_CONFIG[state.level - 1], BRICK_ROWS, BRICK_COLS);
+    state.bricks     = grid.bricks;
+    state.brickTypes = grid.brickTypes;
 }
 
-export function resetFullState() {
-    state.lives            = MAX_LIVES;
-    state.score            = 0;
-    state.currentSpeedMag  = BALL_SPEED_MAG;
+/**
+ * startLevel(levelNum)                                             US-24
+ * Initialises the given level (1-indexed): builds its grid, applies its speed
+ * multiplier, and resets ball / paddle / per-level state. The cumulative score
+ * and lives are NOT touched here (AC-03/AC-04) — only levelStartScore is snapped
+ * to the current score. levelStartTime is reset to 0 for lazy re-init (AC-08).
+ */
+export function startLevel(levelNum) {
+    const config = LEVEL_CONFIG[levelNum - 1];
+    state.level = levelNum;
+
+    const grid = buildLevelGrid(config, BRICK_ROWS, BRICK_COLS);
+    state.bricks     = grid.bricks;
+    state.brickTypes = grid.brickTypes;
+
+    state.baseSpeedMag       = BALL_SPEED_MAG * config.ballSpeedMult;
+    state.currentSpeedMag    = state.baseSpeedMag;
     state.currentPaddleWidth = PADDLE_WIDTH;
-    state.paddleX          = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
-    state.activePowerUps   = [];
-    state.activeEffects    = {};
-    state.stickyActive     = false;
-    state.gameState        = 'playing';
-    state.levelStartTime          = 0;
+    state.paddleX            = (CANVAS_WIDTH - PADDLE_WIDTH) / 2;
+    state.activePowerUps     = [];
+    state.activeEffects      = {};
+    state.stickyActive       = false;
+    resetBallsState();
+
+    state.levelStartScore         = state.score; // cumulative score preserved
+    state.levelStartTime          = 0;           // AC-08 lazy re-init
     state.comboCount              = 0;
     state.brickHitSinceLastPaddle = false;
     state.livesLostThisLevel      = 0;
+    state.levelCompleteTimer      = 0;
+}
+
+/**
+ * resetFullState() — full reset for a new game (AC-07): back to level 1,
+ * score 0, lives full. High scores are NOT cleared (US-22 AC-10).
+ */
+export function resetFullState() {
+    state.lives = MAX_LIVES;
+    state.score = 0;
+    startLevel(1);             // level 1 grid, speed, ball, paddle, per-level timers
+    state.gameState = 'playing';
     // US-22 — reset HS input state (scores NOT cleared, AC-10)
     state.hsInputLetters  = ['A', 'A', 'A'];
     state.hsInputCursor   = 0;
     state.hsPendingScore  = null;
-    resetBallsState();
-    resetBricksState();
 }

@@ -7,6 +7,7 @@ import {
     BRICK_ROWS, BRICK_COLS, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP,
     BRICK_OFFSET_X, BRICK_OFFSET_Y,
     ROW_COLORS, POWERUP_COLORS,
+    LEVEL_CONFIG, // US-24
 } from './constants.js';
 import { state } from './state.js';
 import { computeTimeMultiplier, computeComboMultiplier } from './game-core.js';
@@ -275,7 +276,41 @@ function drawHighScoreTable(scores) {
     _ctx.textBaseline = 'alphabetic';
 }
 
+/**
+ * drawLevelComplete()                                             US-24
+ * Green semi-transparent overlay shown for LEVEL_COMPLETE_DURATION between
+ * levels (AC-03). Displays the score earned on the level just cleared (AC-04).
+ */
+function drawLevelComplete() {
+    const cx = CANVAS_WIDTH / 2;
+    const cy = CANVAS_HEIGHT / 2;
+    _ctx.fillStyle = 'rgba(0, 80, 0, 0.78)';
+    _ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    _ctx.textAlign = 'center';
+    _ctx.textBaseline = 'middle';
+    _ctx.fillStyle = '#2ecc71';
+    _ctx.font = 'bold 46px monospace';
+    _ctx.fillText('LEVEL COMPLETE', cx, cy - 70);
+    _ctx.fillStyle = '#ffffff';
+    _ctx.font = '24px monospace';
+    const levelScore = state.score - state.levelStartScore;
+    _ctx.fillText('Score du niveau : ' + levelScore, cx, cy - 14);
+    _ctx.fillStyle = '#cccccc';
+    _ctx.font = '20px monospace';
+    _ctx.fillText('Score total : ' + state.score, cx, cy + 22);
+    _ctx.fillStyle = '#f1c40f';
+    _ctx.font = '20px monospace';
+    const next = LEVEL_CONFIG[state.level]; // state.level still the cleared level
+    _ctx.fillText('Prochain : ' + (next ? next.name : ''), cx, cy + 64);
+    _ctx.textAlign = 'left';
+    _ctx.textBaseline = 'alphabetic';
+}
+
 export function drawOverlay() {
+    if (state.gameState === 'levelcomplete') {
+        drawLevelComplete();
+        return;
+    }
     if (state.gameState === 'highscore_input') {
         drawHighScoreInput();
         return;
@@ -338,7 +373,7 @@ export function drawOverlay() {
         _ctx.fillText('YOU WIN !', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 50);
         _ctx.fillStyle = '#ffffff';
         _ctx.font = '28px monospace';
-        _ctx.fillText('Score : ' + state.score, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
+        _ctx.fillText('Score total : ' + state.score, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10); // US-24 cumulative
         _ctx.fillStyle = '#aaaaaa';
         _ctx.font = '18px monospace';
         _ctx.fillText('Appuie sur ESPACE pour rejouer', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 60);

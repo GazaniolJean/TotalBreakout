@@ -20,6 +20,8 @@ function updateHUD() {
     const extra = state.lives > 3 ? ' +' + (state.lives - 3) : '';
     document.getElementById('livesDisplay').textContent = dots + extra;
     document.getElementById('scoreDisplay').textContent = state.score;
+    const levelEl = document.getElementById('levelDisplay'); // US-24
+    if (levelEl) levelEl.textContent = 'LV ' + state.level;
     const comboEl = document.getElementById('comboDisplay');
     if (comboEl) {
         if (state.comboCount > 0 && state.gameState === 'playing') {
@@ -52,7 +54,7 @@ function checkHighScoreTransition(prevState) {
     const newState = state.gameState;
     if (newState !== 'gameover' && newState !== 'victory') return;
     if (isTopScore(state.score)) {
-        state.hsPendingScore  = { score: state.score, level: 1 };
+        state.hsPendingScore  = { score: state.score, level: state.level }; // US-24
         state.hsInputLetters  = ['A', 'A', 'A'];
         state.hsInputCursor   = 0;
         state.hsNewEntryRank  = -1;
