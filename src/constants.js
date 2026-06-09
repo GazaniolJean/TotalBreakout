@@ -99,3 +99,15 @@ export const LEVEL_CONFIG = [
 
 // Duration (ms) of the LEVEL COMPLETE overlay shown between levels (AC-03).
 export const LEVEL_COMPLETE_DURATION = 2000;
+
+// ---------------------------------------------------------------------------
+// US-25 — Brick destruction particles
+// ---------------------------------------------------------------------------
+export const PARTICLE_COUNT      = 6;     // particles emitted per destroyed brick (AC-01)
+export const PARTICLE_SIZE       = 4;     // px — square side (AC-02)
+export const PARTICLE_SPEED      = 3;     // px/frame — initial speed (AC-02)
+export const PARTICLE_FRICTION   = 0.92;  // per-frame velocity multiplier (AC-02)
+export const PARTICLE_LIFETIME   = 400;   // ms — lifespan (AC-02)
+export const PARTICLE_SPREAD_DEG = 15;    // ± random angular jitter (AC-01)
+export const MAX_PARTICLES       = 200;   // ring-buffer cap (AC-05)
+export const EXPLOSION_FLASH_COLOR = 'rgba(255,255,255,0.6)'; // chain flash (AC-04)

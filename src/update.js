@@ -10,6 +10,8 @@ import {
     POWERUP_DROP_CHANCE, EXTRA_LIFE_DROP_CHANCE, POWERUP_FALL_SPEED,
     POWERUP_TYPES, STICKY_DURATION, PRECISION_BONUS,
     LEVEL_CONFIG, LEVEL_COMPLETE_DURATION, // US-24
+    ROW_COLORS, PARTICLE_COUNT, PARTICLE_SIZE, PARTICLE_SPEED, // US-25
+    PARTICLE_FRICTION, PARTICLE_LIFETIME, PARTICLE_SPREAD_DEG, MAX_PARTICLES, // US-25
 } from './constants.js';
 import { state, resetBallsState, startLevel } from './state.js';
 import { keys } from './input.js';
@@ -44,6 +46,36 @@ function updatePaddle(dt) {
     if (keys[KEY_LEFT]  || keys['arrowleft'])  state.paddleX -= PADDLE_SPEED * dt;
     if (keys[KEY_RIGHT] || keys['arrowright']) state.paddleX += PADDLE_SPEED * dt;
     state.paddleX = Math.max(0, Math.min(CANVAS_WIDTH - state.currentPaddleWidth, state.paddleX));
+}
+
+/**
+ * emitBrickParticles(row, col)                                     US-25
+ * Spawns destruction particles at the brick centre (AC-01) and enforces the
+ * MAX_PARTICLES ring-buffer cap by dropping the oldest particles (AC-05).
+ */
+function emitBrickParticles(row, col) {
+    const cx = BRICK_OFFSET_X + col * (BRICK_WIDTH  + BRICK_GAP) + BRICK_WIDTH  / 2;
+    const cy = BRICK_OFFSET_Y + row * (BRICK_HEIGHT + BRICK_GAP) + BRICK_HEIGHT / 2;
+    const parts = _GameCore.spawnBrickParticles(
+        cx, cy, ROW_COLORS[row],
+        PARTICLE_COUNT, PARTICLE_SPEED, PARTICLE_SPREAD_DEG, PARTICLE_LIFETIME, PARTICLE_SIZE
+    );
+    state.particles.push(...parts);
+    if (state.particles.length > MAX_PARTICLES) {
+        // ring buffer: newest overwrite oldest (AC-05)
+        state.particles.splice(0, state.particles.length - MAX_PARTICLES);
+    }
+}
+
+/**
+ * emitExplosionFlash(row, col)                                     US-25
+ * Registers a 1-frame white flash over a brick destroyed indirectly by an
+ * explosion chain (AC-04). No particles are emitted for these (perf).
+ */
+function emitExplosionFlash(row, col) {
+    const x = BRICK_OFFSET_X + col * (BRICK_WIDTH  + BRICK_GAP);
+    const y = BRICK_OFFSET_Y + row * (BRICK_HEIGHT + BRICK_GAP);
+    state.particleFlashes.push({ x, y, w: BRICK_WIDTH, h: BRICK_HEIGHT });
 }
 
 /**
@@ -172,6 +204,7 @@ function updateBall(i, dt, deltaTime, destroyedThisFrame) {
                     anyDestroyed = true;
                     const wasExplosive = bt.type === 'explosive';
                     destroyBrick(row, col);
+                    emitBrickParticles(row, col); // US-25 AC-01: direct destruction → particles
 
                     if (wasExplosive) {
                         // AC-07 (US-23): explosion chain force-destroys multi-hit
@@ -182,6 +215,7 @@ function updateBall(i, dt, deltaTime, destroyedThisFrame) {
                             if (!destroyedThisFrame.has(chainKey) && state.bricks[cr][cc]) {
                                 destroyedThisFrame.add(chainKey);
                                 destroyBrick(cr, cc);
+                                emitExplosionFlash(cr, cc); // US-25 AC-04: indirect → flash, no particles
                             }
                         }
                     }
@@ -306,12 +340,17 @@ export function update(deltaTime) {
     // V3 — lazily initialise level timer on first playing frame
     if (state.levelStartTime === 0) state.levelStartTime = Date.now();
 
+    // US-25 — clear last frame's 1-frame explosion flashes
+    state.particleFlashes.length = 0;
+
     const dt = deltaTime / (1000 / 60);
     updatePaddle(dt);
     const destroyedThisFrame = new Set();
     for (let i = state.balls.length - 1; i >= 0; i--) {
         updateBall(i, dt, deltaTime, destroyedThisFrame);
     }
+    // US-25 — advance purely-visual destruction particles
+    state.particles = _GameCore.advanceParticles(state.particles, dt, deltaTime, PARTICLE_FRICTION);
     if (state.balls.length === 0) { handleLifeLost(); return; }
     updatePowerUpCapsules(dt);
     updateTimedEffects(deltaTime);

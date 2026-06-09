@@ -47,6 +47,9 @@ export const state = {
     levelStartScore: 0,            // cumulative score at the start of the level
     baseSpeedMag: BALL_SPEED_MAG,  // ball base magnitude for the current level
     levelCompleteTimer: 0,         // ms left on the LEVEL COMPLETE overlay
+    // US-25 — destruction particles
+    particles: [],                 // active destruction particles
+    particleFlashes: [],           // 1-frame white flashes for chain explosions
     // High scores (US-22)
     hsInputLetters: ['A', 'A', 'A'],
     hsInputCursor: 0,
@@ -106,6 +109,8 @@ export function startLevel(levelNum) {
     state.brickHitSinceLastPaddle = false;
     state.livesLostThisLevel      = 0;
     state.levelCompleteTimer      = 0;
+    state.particles               = []; // US-25 AC-07: clear on level start/reset
+    state.particleFlashes         = [];
 }
 
 /**
