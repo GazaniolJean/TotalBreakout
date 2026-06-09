@@ -529,7 +529,7 @@ Contraintes : solo dev · pas de backend · mobile-friendly · 60 FPS cible
 | US-23 | Briques multi-hit (×2 et ×3) | ✅ Fait |
 | US-24 | Niveaux multiples (3 layouts fixes) | ✅ Fait |
 | US-25 | Animations de destruction des briques | ✅ Fait |
-| US-26 | SFX — Effets sonores | ⬜ À faire |
+| US-26 | SFX — Effets sonores | ❌ Rejeté |
 
 ---
 
@@ -654,6 +654,8 @@ Contraintes : solo dev · pas de backend · mobile-friendly · 60 FPS cible
 ---
 
 ## US-26 · SFX — Effets sonores
+
+> ❌ **Rejeté** — décision produit : pas de son ajouté pour le moment. Story conservée pour référence ; à réévaluer dans une version ultérieure si besoin.
 
 **En tant que** joueur, **je veux** entendre des effets sonores à chaque action clé du jeu **afin de** renforcer le retour sensoriel et l'ambiance arcade.
 
