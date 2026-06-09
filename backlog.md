@@ -529,7 +529,7 @@ Contraintes : solo dev · pas de backend · mobile-friendly · 60 FPS cible
 | US-23 | Briques multi-hit (×2 et ×3) | ✅ Fait |
 | US-24 | Niveaux multiples (3 layouts fixes) | ✅ Fait |
 | US-25 | Animations de destruction des briques | ✅ Fait |
-| US-26 | SFX — Effets sonores | ⬜ À faire |
+| US-26 | SFX — Effets sonores | ❌ Rejeté |
 
 ---
 
@@ -655,6 +655,8 @@ Contraintes : solo dev · pas de backend · mobile-friendly · 60 FPS cible
 
 ## US-26 · SFX — Effets sonores
 
+> ❌ **Rejeté** — décision produit : pas de son ajouté pour le moment. Story conservée pour référence ; à réévaluer dans une version ultérieure si besoin.
+
 **En tant que** joueur, **je veux** entendre des effets sonores à chaque action clé du jeu **afin de** renforcer le retour sensoriel et l'ambiance arcade.
 
 **Dépendances :** US-02, US-04, US-09, US-05
@@ -713,3 +715,218 @@ Permettre aux joueurs de créer et partager leurs propres niveaux directement da
 **Hors scope v5 :**
 - Classement en ligne des niveaux partagés (nécessite un backend)
 - Éditeur de power-ups ou de paramètres physiques
+
+---
+
+## Ordre de développement v5 — Éditeur de niveaux
+
+**Objectif :** permettre aux joueurs de créer, sauvegarder et rejouer leurs propres niveaux directement dans le navigateur, en réutilisant `buildLevelGrid()` (US-24) qui supporte déjà les layouts fixes via les codes `N` / `E` / `2` / `3` / `null`.
+
+| # | User Story | Statut |
+|---|-----------|--------|
+| US-27 | Éditeur — accès, état et navigation | ⬜ À faire |
+| US-28 | Grille d'édition interactive (placer / effacer) | ⬜ À faire |
+| US-29 | Palette de types de briques | ⬜ À faire |
+| US-30 | Métadonnées & validation du niveau | ⬜ À faire |
+| US-31 | Tester le niveau depuis l'éditeur | ⬜ À faire |
+| US-32 | Sauvegarde locale & bibliothèque de niveaux | ⬜ À faire |
+| US-33 | Export / Import JSON | ⬜ À faire |
+| US-34 | Jouer ses niveaux personnalisés | ⬜ À faire |
+
+---
+
+## US-27 · Éditeur — accès, état et navigation
+
+**En tant que** joueur, **je veux** ouvrir un éditeur de niveaux depuis le menu **afin de** créer mes propres grilles sans quitter le jeu.
+
+**Dépendances :** US-08, US-24
+
+### Acceptance Criteria
+
+- AC-01 — Un nouvel état `'editor'` est ajouté à la machine d'états du jeu. Il est mutuellement exclusif avec `'playing'`, `'start'`, etc.
+- AC-02 — L'écran de démarrage affiche un label `[E] ÉDITEUR` et la touche `E` ouvre l'éditeur. Sur mobile, un bouton `ÉDITEUR` est affiché sur l'écran start.
+- AC-03 — L'état de l'éditeur est porté par `state.editor = { grid, toolType, levelName, dirty }` où `grid[r][c]` est un code de layout (`null` | `'N'` | `'E'` | `'2'` | `'3'`), dimensions `BRICK_ROWS × BRICK_COLS`.
+- AC-04 — À l'ouverture, `state.editor.grid` est initialisée vide (toutes cellules `null`), sauf si un niveau est en cours d'édition (chargé depuis la bibliothèque, US-32).
+- AC-05 — Un bouton / touche `Échap` (ou `[M] MENU`) revient à l'écran de démarrage. Si `dirty === true` (modifs non sauvegardées), une confirmation est demandée avant de quitter.
+- AC-06 — La boucle de jeu (`update`) n'exécute aucune physique de balle en état `'editor'` ; seul le rendu et les interactions d'édition sont actifs.
+- AC-07 — Le HUD de jeu (score, vies, combo) est masqué en mode éditeur ; un bandeau d'édition le remplace (nom du niveau + outil actif).
+
+### Hors scope
+- Édition collaborative ou multi-utilisateur
+- Annuler / refaire (undo/redo) — candidat à une story dédiée
+
+### Notes design
+- Réutiliser le schéma de codes de `brickFromLayoutCode()` (game-core.js) garantit que la grille produite par l'éditeur est directement consommable par `buildLevelGrid()` sans conversion.
+
+---
+
+## US-28 · Grille d'édition interactive (placer / effacer)
+
+**En tant que** créateur, **je veux** cliquer sur la grille pour placer ou effacer des briques **afin de** dessiner la disposition de mon niveau.
+
+**Dépendances :** US-27
+
+### Acceptance Criteria
+
+- AC-01 — La grille `BRICK_ROWS × BRICK_COLS` est rendue sur le canvas aux mêmes positions que les briques en jeu (`BRICK_OFFSET_X/Y`, `BRICK_WIDTH/HEIGHT`, `BRICK_GAP`), avec un quadrillage léger sur les cellules vides.
+- AC-02 — Un clic gauche sur une cellule vide y place une brique du type d'outil actif (US-29). Un clic sur une cellule occupée par le même type l'efface (toggle).
+- AC-03 — Le glisser-déposer (clic maintenu + déplacement) peint en continu sur les cellules survolées, sans repasser deux fois sur la même cellule dans un même geste.
+- AC-04 — La cellule survolée par la souris est mise en évidence (contour) avec un aperçu translucide de la brique qui serait posée.
+- AC-05 — Le support tactile permet de peindre au doigt (tap + glissé), avec `touch-action: none` pour éviter le scroll.
+- AC-06 — Toute modification de la grille passe `state.editor.dirty = true`.
+- AC-07 — La conversion coordonnées écran → indices `(row, col)` gère le scaling CSS du canvas (comme `mousemove` en jeu).
+
+### Hors scope
+- Sélection rectangulaire / copier-coller de zones
+- Remplissage par seau (flood fill)
+
+### Notes design
+- AC-03 (dédoublonnage par geste) évite l'effet « clignotement » où un glissé sur une cellule la pose puis l'efface en boucle.
+
+---
+
+## US-29 · Palette de types de briques
+
+**En tant que** créateur, **je veux** choisir le type de brique à placer **afin de** composer des niveaux variés.
+
+**Dépendances :** US-28, US-23
+
+### Acceptance Criteria
+
+- AC-01 — Une palette affiche les outils : `Normale`, `Résistante ×2`, `Blindée ×3`, `Explosive`, et `Gomme`. Chaque outil utilise le même rendu visuel que la brique correspondante en jeu (couleur de rangée, marqueur explosif `✸`, label de hits).
+- AC-02 — L'outil actif est mis en évidence (contour / fond). Par défaut `Normale` est sélectionné à l'ouverture.
+- AC-03 — Sélectionner un outil met à jour `state.editor.toolType` (`'N'` | `'2'` | `'3'` | `'E'` | `null` pour la gomme).
+- AC-04 — Des raccourcis clavier sélectionnent les outils : `1`=Normale, `2`=×2, `3`=×3, `4`=Explosive, `0`/`G`=Gomme.
+- AC-05 — La gomme (`null`) efface la cellule cliquée quel que soit son type.
+- AC-06 — La palette est accessible et lisible sur mobile (boutons assez grands, `@media (pointer: coarse)`).
+
+### Hors scope
+- Types de briques inédits non présents en jeu
+- Outil « pipette » (récupérer le type d'une cellule existante)
+
+### Notes design
+- La couleur d'une brique en jeu dépend de sa **rangée** (`ROW_COLORS[r]`), pas de son type. Dans l'éditeur, conserver ce comportement : le type définit l'icône/marqueur, la rangée définit la couleur.
+
+---
+
+## US-30 · Métadonnées & validation du niveau
+
+**En tant que** créateur, **je veux** nommer mon niveau et savoir s'il est jouable **afin d'**éviter de sauvegarder un niveau vide ou impossible.
+
+**Dépendances :** US-28
+
+### Acceptance Criteria
+
+- AC-01 — Un champ permet de saisir / modifier `state.editor.levelName` (1 à 24 caractères). Nom par défaut : `Sans titre`.
+- AC-02 — La fonction `validateEditorGrid(grid)` (dans `game-core.js`, pure et testable) retourne `{ valid: boolean, reason: string|null }`.
+- AC-03 — Règles de validation : au moins 1 brique placée (`reason: 'empty'`) ; le nom n'est pas vide (`reason: 'noname'`).
+- AC-04 — Les actions `Tester` (US-31), `Sauvegarder` (US-32) et `Exporter` (US-33) sont désactivées tant que `valid === false`, avec un message expliquant la raison.
+- AC-05 — Un compteur affiche le nombre de briques placées et la répartition par type.
+
+### Hors scope
+- Vérification de la « solvabilité » réelle du niveau (qu'il soit terminable) — hors de portée sans simulation
+- Limite maximale de briques
+
+### Notes design
+- `validateEditorGrid` est volontairement minimale : on empêche les cas absurdes (vide, sans nom) sans bloquer la créativité. La solvabilité reste de la responsabilité du créateur.
+
+---
+
+## US-31 · Tester le niveau depuis l'éditeur
+
+**En tant que** créateur, **je veux** jouer mon niveau en un clic **afin de** vérifier qu'il est amusant avant de le sauvegarder.
+
+**Dépendances :** US-28, US-24
+
+### Acceptance Criteria
+
+- AC-01 — Un bouton `▶ TESTER` (touche `T`) lance une partie sur la grille en cours d'édition, uniquement si la grille est valide (US-30).
+- AC-02 — La partie de test est construite via `buildLevelGrid({ layout: state.editor.grid, ... })` avec les chances procédurales à 0 (le layout fixe fait foi). Vitesse balle : `ballSpeedMult: 1.0`.
+- AC-03 — En fin de partie de test (victoire, game over) ou via `Échap`, le jeu **revient à l'éditeur** avec la grille intacte — et non à l'écran de démarrage.
+- AC-04 — Le score / high score n'est **pas** enregistré pour une partie de test (les niveaux custom ne polluent pas le leaderboard officiel).
+- AC-05 — Un indicateur visuel (`MODE TEST`) est affiché pendant la partie de test pour la distinguer d'une partie normale.
+
+### Hors scope
+- Statistiques de test (temps, nombre de coups)
+- Rejouer automatiquement en boucle
+
+### Notes design
+- Mémoriser l'état d'origine (`'editor'`) dans une variable type `returnState` pour que la fin de partie sache où revenir. Évite de dupliquer la logique de transition.
+
+---
+
+## US-32 · Sauvegarde locale & bibliothèque de niveaux
+
+**En tant que** créateur, **je veux** sauvegarder mes niveaux et les retrouver plus tard **afin de** constituer ma collection.
+
+**Dépendances :** US-30, US-22
+
+### Acceptance Criteria
+
+- AC-01 — Les niveaux sont persistés dans `localStorage` sous la clé `breakout_custom_levels`, sous forme d'un tableau d'objets `{ id: string, name: string, grid: Array, createdAt: number, updatedAt: number }`.
+- AC-02 — `Sauvegarder` enregistre le niveau courant : création si nouveau (`id` généré), mise à jour si édition d'un niveau existant. `dirty` repasse à `false`.
+- AC-03 — Une bibliothèque (accessible depuis l'éditeur et l'écran start) liste les niveaux sauvegardés : nom, date, nombre de briques.
+- AC-04 — Depuis la bibliothèque : `Charger` ouvre le niveau dans l'éditeur, `Renommer` change le nom, `Supprimer` retire le niveau (avec confirmation).
+- AC-05 — Les fonctions de persistance (`loadCustomLevels`, `saveCustomLevels`, `upsertCustomLevel`, `deleteCustomLevel`) gèrent silencieusement l'indisponibilité de `localStorage` (navigation privée) sans planter.
+- AC-06 — `upsertCustomLevel(levels, entry)` est pure et testable (retourne un nouveau tableau, ne mute pas l'entrée).
+- AC-07 — Si la bibliothèque est vide, un message invite à créer un premier niveau.
+
+### Hors scope
+- Dossiers / tags / recherche dans la bibliothèque
+- Synchronisation cloud (nécessite un backend)
+- Limite de quota explicite (au-delà de la limite naturelle de localStorage)
+
+### Notes design
+- Réutiliser le pattern de `highscore.js` (try/catch autour de `localStorage`, fallback silencieux) pour la cohérence.
+- `id` : un timestamp + suffixe aléatoire suffit ; pas besoin d'UUID complet.
+
+---
+
+## US-33 · Export / Import JSON
+
+**En tant que** créateur, **je veux** exporter et importer un niveau en JSON **afin de** le sauvegarder hors du navigateur ou le partager avec un autre joueur.
+
+**Dépendances :** US-32
+
+### Acceptance Criteria
+
+- AC-01 — `Exporter` produit un fichier `.json` téléchargeable contenant `{ name, grid, version: 1 }`. Le nom de fichier dérive du nom du niveau (assaini).
+- AC-02 — Un bouton `Copier` met le JSON du niveau dans le presse-papier (alternative au téléchargement).
+- AC-03 — `Importer` accepte un fichier `.json` (input file) **ou** un collage de texte JSON, et charge le niveau dans l'éditeur.
+- AC-04 — `parseLevelJSON(text)` (pure, testable) valide le schéma : présence de `name` et `grid`, dimensions correctes, codes de cellule valides (`null` | `'N'` | `'E'` | `'2'` | `'3'`). Retourne `{ ok, level, error }`.
+- AC-05 — Un import invalide (JSON malformé, mauvais schéma, dimensions incorrectes) affiche un message d'erreur clair sans corrompre l'éditeur en cours.
+- AC-06 — Un niveau importé n'est **pas** automatiquement sauvegardé : il s'ouvre dans l'éditeur, l'utilisateur décide de le sauvegarder (US-32).
+- AC-07 — Le champ `version` permet une future évolution de format sans casser les imports anciens.
+
+### Hors scope
+- Codes courts partageables (encodage compact type base64) — possible évolution
+- Import de plusieurs niveaux en une fois (batch)
+
+### Notes design
+- Valider les dimensions à l'import est critique : `buildLevelGrid` dérive `rows/cols` du layout, mais le reste du moteur suppose `BRICK_ROWS × BRICK_COLS`. Rejeter les grilles non conformes.
+
+---
+
+## US-34 · Jouer ses niveaux personnalisés
+
+**En tant que** joueur, **je veux** lancer un niveau que j'ai créé depuis le menu **afin de** y jouer comme un niveau normal.
+
+**Dépendances :** US-32, US-24
+
+### Acceptance Criteria
+
+- AC-01 — Depuis l'écran de démarrage (ou la bibliothèque), sélectionner un niveau custom lance une vraie partie sur ce niveau.
+- AC-02 — La partie réutilise toute la boucle de jeu existante : balle, raquette, power-ups, multiplicateurs de score, vies.
+- AC-03 — Le niveau custom est un **niveau unique** (pas de progression multi-niveaux US-24) : la victoire affiche `YOU WIN !`, le game over affiche `GAME OVER`, puis retour à la bibliothèque.
+- AC-04 — Le HUD affiche le nom du niveau custom à la place de `LV N`.
+- AC-05 — Le high score officiel n'est pas impacté par les parties sur niveaux custom (leaderboard séparé ou désactivé pour le custom — à trancher au design).
+- AC-06 — Si le niveau a été supprimé entre-temps, un message d'erreur renvoie à la bibliothèque sans planter.
+
+### Hors scope
+- Enchaînement de plusieurs niveaux custom en « campagne »
+- Leaderboard par niveau custom
+
+### Notes design
+- AC-05 : garder le leaderboard officiel propre est important pour la crédibilité des scores. Un leaderboard local par niveau custom est un candidat d'évolution, pas un prérequis.
+
+---
