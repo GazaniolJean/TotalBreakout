@@ -2,15 +2,16 @@
 
 import {
     CANVAS_WIDTH, CANVAS_HEIGHT,
-    BALL_RADIUS, BALL_SPEED_MAG,
+    BALL_RADIUS,
     PADDLE_Y, PADDLE_HEIGHT, PADDLE_WIDTH,
     KEY_LEFT, KEY_RIGHT, PADDLE_SPEED, MAX_BOUNCE_ANGLE,
     BRICK_ROWS, BRICK_COLS, BRICK_WIDTH, BRICK_HEIGHT, BRICK_GAP,
     BRICK_OFFSET_X, BRICK_OFFSET_Y, ROW_POINTS,
     POWERUP_DROP_CHANCE, EXTRA_LIFE_DROP_CHANCE, POWERUP_FALL_SPEED,
     POWERUP_TYPES, STICKY_DURATION, PRECISION_BONUS,
+    LEVEL_CONFIG, LEVEL_COMPLETE_DURATION, // US-24
 } from './constants.js';
-import { state, resetBallsState } from './state.js';
+import { state, resetBallsState, startLevel } from './state.js';
 import { keys } from './input.js';
 import { spawnPowerUp, activateEffect, applyBallSpeedMagnitude } from './powerups.js';
 
@@ -208,7 +209,13 @@ function updateBall(i, dt, deltaTime, destroyedThisFrame) {
                     state.score += PRECISION_BONUS;
                     _updateHUD();
                 }
-                state.gameState = 'victory';
+                // US-24 — advance to next level, or final victory after last level
+                if (state.level < LEVEL_CONFIG.length) {
+                    state.gameState        = 'levelcomplete';
+                    state.levelCompleteTimer = LEVEL_COMPLETE_DURATION;
+                } else {
+                    state.gameState = 'victory';
+                }
             }
         }
         ball.vx = brickHits.vx; ball.vy = brickHits.vy;
@@ -241,7 +248,7 @@ function updateTimedEffects(deltaTime) {
         if (state.activeEffects[type].remainingMs <= 0) {
             delete state.activeEffects[type];
             if (type === 'fast' || type === 'slow') {
-                state.currentSpeedMag = BALL_SPEED_MAG;
+                state.currentSpeedMag = state.baseSpeedMag; // US-24: restore level base speed
                 applyBallSpeedMagnitude(state.currentSpeedMag);
             }
             if (type === 'wide' || type === 'small') {
@@ -269,7 +276,7 @@ function handleLifeLost() {
     state.lives -= 1;
     _updateHUD();
     ['fast', 'slow', 'wide', 'small'].forEach(t => delete state.activeEffects[t]);
-    state.currentSpeedMag    = BALL_SPEED_MAG;
+    state.currentSpeedMag    = state.baseSpeedMag; // US-24: keep level base speed
     state.currentPaddleWidth = PADDLE_WIDTH;
     state.stickyActive       = false;
     state.activePowerUps     = [];
@@ -284,6 +291,16 @@ function handleLifeLost() {
 
 /** update(deltaTime) — tick principal du jeu : raquette, balles, capsules power-up, effets temporisés. Ignore si l'état n'est pas 'playing'. */
 export function update(deltaTime) {
+    // US-24 — LEVEL COMPLETE overlay: count down, then start the next level
+    if (state.gameState === 'levelcomplete') {
+        state.levelCompleteTimer -= deltaTime;
+        if (state.levelCompleteTimer <= 0) {
+            startLevel(state.level + 1);
+            state.gameState = 'playing';
+            _updateHUD();
+        }
+        return;
+    }
     if (state.gameState !== 'playing') return;
 
     // V3 — lazily initialise level timer on first playing frame

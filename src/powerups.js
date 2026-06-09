@@ -5,7 +5,7 @@ import {
     POWERUP_SIZE, POWERUP_COLORS, POWERUP_LABELS, POWERUP_DURATIONS,
     SPEED_FAST_MULT, SPEED_SLOW_MULT,
     PADDLE_WIDE_MULT, PADDLE_SMALL_MULT, PADDLE_WIDTH, CANVAS_WIDTH,
-    BALL_SPEED_MAG, MULTIBALL_COUNT, MULTIBALL_SPREAD_DEG, MAX_BALLS,
+    MULTIBALL_COUNT, MULTIBALL_SPREAD_DEG, MAX_BALLS,
     PENETRATION_COUNT,
 } from './constants.js';
 import { state } from './state.js';
@@ -108,7 +108,8 @@ export function activateEffect(type) {
     }
     if (type === 'fast' || type === 'slow') {
         const multiplier = (type === 'fast') ? SPEED_FAST_MULT : SPEED_SLOW_MULT;
-        state.currentSpeedMag = _GameCore.computeSpeedEffect(BALL_SPEED_MAG, multiplier);
+        // US-24: speed power-ups scale from the current level's base speed
+        state.currentSpeedMag = _GameCore.computeSpeedEffect(state.baseSpeedMag, multiplier);
         applyBallSpeedMagnitude(state.currentSpeedMag);
     } else if (type === 'wide' || type === 'small') {
         const mult = (type === 'wide') ? PADDLE_WIDE_MULT : PADDLE_SMALL_MULT;

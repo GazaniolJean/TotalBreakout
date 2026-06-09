@@ -593,3 +593,80 @@ describe('insertHighScore - US-22', () => {
     expect(result[0].initials).toBe('AAA');
   });
 });
+
+// ---------------------------------------------------------------------------
+// buildLevelGrid - US-24
+// ---------------------------------------------------------------------------
+describe('buildLevelGrid - US-24', () => {
+  // Level configs mirroring LEVEL_CONFIG in constants.js
+  const L1 = { name: 'NIVEAU 1', ballSpeedMult: 1.0,  explosive_chance: 0.08, multihit2_chance: 0.10, multihit3_chance: 0.00, layout: null };
+  const L2 = { name: 'NIVEAU 2', ballSpeedMult: 1.15, explosive_chance: 0.12, multihit2_chance: 0.15, multihit3_chance: 0.05, layout: null };
+  const constRng = (v) => () => v; // deterministic rng
+
+  test('procedural grid has the requested dimensions', () => {
+    const { bricks, brickTypes } = GameCore.buildLevelGrid(L1, 5, 10, constRng(0.99));
+    expect(bricks.length).toBe(5);
+    expect(bricks[0].length).toBe(10);
+    expect(brickTypes.length).toBe(5);
+    expect(brickTypes[0].length).toBe(10);
+  });
+
+  test('procedural grid: all cells are alive', () => {
+    const { bricks } = GameCore.buildLevelGrid(L1, 5, 10, constRng(0.5));
+    expect(bricks.every(row => row.every(cell => cell === true))).toBe(true);
+  });
+
+  test('high roll → every brick is normal (1 hit)', () => {
+    const { brickTypes } = GameCore.buildLevelGrid(L1, 5, 10, constRng(0.99));
+    const flat = brickTypes.flat();
+    expect(flat.every(b => b.type === 'normal' && b.hitsLeft === 1 && b.maxHits === 1)).toBe(true);
+  });
+
+  test('roll 0 → every brick is explosive when explosive_chance > 0', () => {
+    const { brickTypes } = GameCore.buildLevelGrid(L1, 2, 2, constRng(0));
+    expect(brickTypes.flat().every(b => b.type === 'explosive')).toBe(true);
+  });
+
+  test('roll in multihit2 band → resistant brick (maxHits 2)', () => {
+    // L1: tExplosive=0.08, tMH3=0.08, tMH2=0.18 → 0.15 lands in the mh2 band
+    const { brickTypes } = GameCore.buildLevelGrid(L1, 1, 1, constRng(0.15));
+    expect(brickTypes[0][0]).toEqual({ type: 'multihit', hitsLeft: 2, maxHits: 2 });
+  });
+
+  test('roll in multihit3 band → armored brick (maxHits 3)', () => {
+    // L2: tExplosive=0.12, tMH3=0.17 → 0.14 lands in the mh3 band
+    const { brickTypes } = GameCore.buildLevelGrid(L2, 1, 1, constRng(0.14));
+    expect(brickTypes[0][0]).toEqual({ type: 'multihit', hitsLeft: 3, maxHits: 3 });
+  });
+
+  test('fixed layout: dimensions and types follow the layout codes', () => {
+    const layout = [
+      ['N', 'E', null],
+      ['2', '3', '.'],
+    ];
+    const { bricks, brickTypes } = GameCore.buildLevelGrid({ ...L1, layout });
+    expect(bricks.length).toBe(2);
+    expect(bricks[0].length).toBe(3);
+    // Row 0
+    expect(bricks[0]).toEqual([true, true, false]);
+    expect(brickTypes[0][0]).toEqual({ type: 'normal',    hitsLeft: 1, maxHits: 1 });
+    expect(brickTypes[0][1]).toEqual({ type: 'explosive', hitsLeft: 1, maxHits: 1 });
+    // Row 1
+    expect(bricks[1]).toEqual([true, true, false]);
+    expect(brickTypes[1][0]).toEqual({ type: 'multihit',  hitsLeft: 2, maxHits: 2 });
+    expect(brickTypes[1][1]).toEqual({ type: 'multihit',  hitsLeft: 3, maxHits: 3 });
+  });
+
+  test('does not mutate the config object', () => {
+    const cfg = { ...L1 };
+    const snapshot = JSON.stringify(cfg);
+    GameCore.buildLevelGrid(cfg, 5, 10, constRng(0.5));
+    expect(JSON.stringify(cfg)).toBe(snapshot);
+  });
+
+  test('defaults to a 5x10 grid when rows/cols omitted', () => {
+    const { bricks } = GameCore.buildLevelGrid(L1, undefined, undefined, constRng(0.99));
+    expect(bricks.length).toBe(5);
+    expect(bricks[0].length).toBe(10);
+  });
+});

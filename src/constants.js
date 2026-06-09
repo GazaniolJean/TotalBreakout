@@ -84,3 +84,18 @@ export const PRECISION_BONUS = 500;
 // High scores (US-22)
 export const HS_MAX_ENTRIES = 10;
 export const HS_STORAGE_KEY = 'breakout_highscores';
+
+// ---------------------------------------------------------------------------
+// US-24 — Multiple levels (3 fixed levels of increasing difficulty)
+// ---------------------------------------------------------------------------
+// Each level is declarative. `layout: null` → procedural grid generated with
+// the configured chances; an explicit 2-D array imposes a fixed layout
+// (reserved for the v5 editor — see buildLevelGrid in game-core.js).
+export const LEVEL_CONFIG = [
+    { name: 'NIVEAU 1', ballSpeedMult: 1.00, explosive_chance: 0.08, multihit2_chance: 0.10, multihit3_chance: 0.00, layout: null },
+    { name: 'NIVEAU 2', ballSpeedMult: 1.15, explosive_chance: 0.12, multihit2_chance: 0.15, multihit3_chance: 0.05, layout: null },
+    { name: 'NIVEAU 3', ballSpeedMult: 1.30, explosive_chance: 0.15, multihit2_chance: 0.20, multihit3_chance: 0.12, layout: null },
+];
+
+// Duration (ms) of the LEVEL COMPLETE overlay shown between levels (AC-03).
+export const LEVEL_COMPLETE_DURATION = 2000;
