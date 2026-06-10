@@ -361,6 +361,41 @@ export function advanceParticles(particles, dt, deltaTime, friction) {
 }
 
 // ---------------------------------------------------------------------------
+// US-27 — Level editor: empty grid + editor sub-state (pure, testable)
+// ---------------------------------------------------------------------------
+
+/**
+ * createEmptyEditorGrid(rows, cols)                                US-27
+ * Returns a fresh rows x cols grid where every cell is null (empty). Cell codes
+ * match brickFromLayoutCode(): null | 'N' | 'E' | '2' | '3', so the grid is
+ * directly consumable by buildLevelGrid() with no conversion.
+ */
+export function createEmptyEditorGrid(rows, cols) {
+  const grid = [];
+  for (let r = 0; r < rows; r++) {
+    grid[r] = [];
+    for (let c = 0; c < cols; c++) {
+      grid[r][c] = null; // empty cell
+    }
+  }
+  return grid;
+}
+
+/**
+ * createEditorState(rows, cols)                                    US-27
+ * Builds the editor sub-state (AC-03): an empty grid (AC-04), the default
+ * 'Normale' tool ('N'), a default level name and a clean dirty flag.
+ */
+export function createEditorState(rows, cols) {
+  return {
+    grid: createEmptyEditorGrid(rows, cols),
+    toolType: 'N',          // default tool = Normale (US-29 makes it selectable)
+    levelName: 'Sans titre',
+    dirty: false,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Browser compatibility shim — temporary, removed in step 8
 // ---------------------------------------------------------------------------
 if (typeof window !== 'undefined') {
@@ -384,5 +419,7 @@ if (typeof window !== 'undefined') {
     buildLevelGrid,   // US-24
     spawnBrickParticles, // US-25
     advanceParticles,    // US-25
+    createEmptyEditorGrid, // US-27
+    createEditorState,     // US-27
   };
 }

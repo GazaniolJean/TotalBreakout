@@ -372,6 +372,10 @@ export function drawOverlay() {
         _ctx.fillStyle = '#00FF41';
         _ctx.font = '15px monospace';
         _ctx.fillText('[H]  HIGH SCORES', cx, cy + 148);
+        // US-27 AC-02 — editor access hint
+        _ctx.fillStyle = '#f1c40f';
+        _ctx.font = '15px monospace';
+        _ctx.fillText('[E]  ÉDITEUR DE NIVEAUX', cx, cy + 174);
         _ctx.textAlign = 'left';
         _ctx.textBaseline = 'alphabetic';
     }
@@ -410,10 +414,57 @@ export function drawOverlay() {
     }
 }
 
+/**
+ * drawEditor()                                                    US-27
+ * Renders the level-editor scene: a title, the (still empty) brick-zone frame
+ * where the interactive grid will live (US-28), and a navigation hint. No game
+ * entities are drawn here (AC-06). The DOM edit banner (name + tool) replaces
+ * the game HUD above the canvas (AC-07).
+ */
+function drawEditor() {
+    const cx = CANVAS_WIDTH / 2;
+
+    // Title
+    _ctx.textAlign = 'center';
+    _ctx.textBaseline = 'middle';
+    _ctx.fillStyle = '#f1c40f';
+    _ctx.font = 'bold 30px monospace';
+    _ctx.fillText('ÉDITEUR DE NIVEAUX', cx, 32);
+
+    // Brick-zone frame: outlines exactly where bricks render in game so the
+    // creator sees the playable area. The interactive grid arrives in US-28.
+    const zoneX = BRICK_OFFSET_X;
+    const zoneY = BRICK_OFFSET_Y;
+    const zoneW = BRICK_COLS * BRICK_WIDTH  + (BRICK_COLS - 1) * BRICK_GAP;
+    const zoneH = BRICK_ROWS * BRICK_HEIGHT + (BRICK_ROWS - 1) * BRICK_GAP;
+    _ctx.strokeStyle = 'rgba(120,140,200,0.5)';
+    _ctx.lineWidth = 2;
+    _ctx.strokeRect(zoneX - 6, zoneY - 6, zoneW + 12, zoneH + 12);
+    _ctx.lineWidth = 1;
+
+    // Placeholder text inside the zone
+    _ctx.fillStyle = '#5566aa';
+    _ctx.font = '16px monospace';
+    _ctx.fillText('Grille d\'édition — à venir (US-28)', cx, zoneY + zoneH / 2);
+
+    // Navigation hint
+    _ctx.fillStyle = '#888888';
+    _ctx.font = '16px monospace';
+    _ctx.fillText('[Échap] ou [M]  retour au menu', cx, CANVAS_HEIGHT - 40);
+
+    _ctx.textAlign = 'left';
+    _ctx.textBaseline = 'alphabetic';
+}
+
 export function draw() {
     _ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     _ctx.fillStyle = '#0d0d1a';
     _ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // US-27 — editor scene replaces the game render (AC-06)
+    if (state.gameState === 'editor') {
+        drawEditor();
+        return;
+    }
     drawBricks();
     drawExplosionFlashes(); // US-25 (AC-04)
     drawParticles();        // US-25 (AC-03: after bricks, before HUD)

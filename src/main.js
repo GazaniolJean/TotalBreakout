@@ -2,7 +2,7 @@
 
 import * as GameCore from './game-core.js';
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from './constants.js';
-import { state, resetFullState } from './state.js';
+import { state, resetFullState, openEditor, closeEditor } from './state.js'; // US-27
 import { initInput } from './input.js';
 import { initPowerups } from './powerups.js';
 import { initDraw, draw } from './draw.js';
@@ -84,6 +84,42 @@ function closeHsView() {
 }
 
 // ============================================================
+// US-27 — Level editor wiring
+// ============================================================
+
+/**
+ * requestCloseEditor() — exits the editor, asking confirmation first if there
+ * are unsaved changes (AC-05). Kept in main.js because it needs the DOM
+ * (window.confirm); state.js stays DOM-free.
+ */
+function requestCloseEditor() {
+    if (state.editor && state.editor.dirty) {
+        const leave = window.confirm('Quitter l\'éditeur ? Les modifications non sauvegardées seront perdues.');
+        if (!leave) return;
+    }
+    closeEditor();
+    updateHUD();
+}
+
+/**
+ * syncChrome() — keeps the DOM chrome (HUD vs editor banner, mobile editor
+ * button) in sync with the state machine via a body[data-state] attribute
+ * (AC-07). CSS does the show/hide; JS only writes on actual state changes.
+ */
+let _lastChromeState = null;
+function syncChrome() {
+    if (state.gameState === _lastChromeState) return;
+    _lastChromeState = state.gameState;
+    document.body.dataset.state = state.gameState;
+    if (state.gameState === 'editor' && state.editor) {
+        const nameEl = document.getElementById('editorBannerName');
+        const toolEl = document.getElementById('editorBannerTool');
+        if (nameEl) nameEl.textContent = state.editor.levelName;
+        if (toolEl) toolEl.textContent = 'Outil : Normale'; // US-29 makes this dynamic
+    }
+}
+
+// ============================================================
 // GAME LOOP
 // ============================================================
 let lastTime = 0;
@@ -96,6 +132,7 @@ function gameLoop(timestamp) {
     const prevState = state.gameState;
     update(deltaTime);
     checkHighScoreTransition(prevState); // US-22: intercept end-game before draw
+    syncChrome();                        // US-27: keep DOM chrome in sync with state
     draw();
     requestAnimationFrame(gameLoop);
 }
@@ -106,6 +143,7 @@ function gameLoop(timestamp) {
 initDraw(ctx);
 initUpdate(GameCore, updateHUD);
 initPowerups(GameCore, updateHUD);
-initInput(canvas, { resetGame, releaseStickyBall, confirmHsEntry, closeHsView });
+initInput(canvas, { resetGame, releaseStickyBall, confirmHsEntry, closeHsView, openEditor, requestCloseEditor }); // US-27
 updateHUD();
+syncChrome(); // US-27: initial chrome state
 requestAnimationFrame(gameLoop);

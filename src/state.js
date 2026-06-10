@@ -7,7 +7,7 @@ import {
     BRICK_ROWS, BRICK_COLS,
     LEVEL_CONFIG, // US-24
 } from './constants.js';
-import { buildLevelGrid } from './game-core.js';
+import { buildLevelGrid, createEditorState } from './game-core.js'; // US-27
 
 function makeBall() {
     return {
@@ -56,6 +56,8 @@ export const state = {
     hsPendingScore: null,
     hsNewEntryRank: -1,
     hsFromStartScreen: false,
+    // US-27 — level editor sub-state, created lazily on open (null when closed)
+    editor: null,
 };
 
 /**
@@ -126,4 +128,28 @@ export function resetFullState() {
     state.hsInputLetters  = ['A', 'A', 'A'];
     state.hsInputCursor   = 0;
     state.hsPendingScore  = null;
+}
+
+// ---------------------------------------------------------------------------
+// US-27 — Level editor navigation
+// ---------------------------------------------------------------------------
+
+/**
+ * openEditor() — enters the editor: builds a fresh empty editor sub-state
+ * (AC-04) and switches the state machine to 'editor' (AC-01). The game grid /
+ * ball state are left untouched; the editor renders its own scene.
+ */
+export function openEditor() {
+    state.editor    = createEditorState(BRICK_ROWS, BRICK_COLS);
+    state.gameState = 'editor';
+}
+
+/**
+ * closeEditor() — leaves the editor back to the start screen (AC-05). The
+ * dirty-confirm prompt is handled by the caller (main.js requestCloseEditor)
+ * because it needs the DOM (window.confirm).
+ */
+export function closeEditor() {
+    state.editor    = null;
+    state.gameState = 'start';
 }
