@@ -91,6 +91,55 @@
             border-radius: 2px;
         }
 
+        /* US-27 — Level editor chrome (HUD <-> banner swap driven by body[data-state]) */
+        #editorBanner {
+            display: none; /* shown only in editor state */
+            width: 100%;
+            max-width: 800px;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 4px;
+            color: #f1c40f;
+            font-family: monospace;
+            font-size: 18px;
+            letter-spacing: 1px;
+            user-select: none;
+        }
+
+        #editorBanner #editorBannerTool {
+            color: #cccccc;
+            font-size: 15px;
+        }
+
+        body[data-state="editor"] #gameHUD     { display: none; }
+        body[data-state="editor"] #editorBanner { display: flex; }
+
+        /* US-27 — mobile ÉDITEUR button: only on the start screen, touch devices */
+        #btnEditor {
+            display: none;
+            width: 100%;
+            max-width: 800px;
+            height: 48px;
+            margin-top: 2px;
+            background: rgba(241, 196, 15, 0.10);
+            border: 2px solid rgba(241, 196, 15, 0.45);
+            border-radius: 8px;
+            color: #f1c40f;
+            font-size: 18px;
+            font-family: monospace;
+            letter-spacing: 1px;
+            cursor: pointer;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        #btnEditor:active { background: rgba(241, 196, 15, 0.22); }
+
+        @media (pointer: coarse) {
+            body[data-state="start"] #btnEditor { display: block; }
+        }
+
         /* V3 — Mobile directional buttons */
         #mobileControls {
             display: none; /* shown only on touch devices via media query */
@@ -142,12 +191,19 @@
         <span id="comboDisplay"></span>
         <span id="livesDisplay"></span>
       </div>
+      <!-- US-27 — editor banner: replaces the HUD while editing (name + active tool) -->
+      <div id="editorBanner">
+        <span id="editorBannerName">Sans titre</span>
+        <span id="editorBannerTool">Outil : Normale</span>
+      </div>
       <canvas id="gameCanvas"></canvas>
       <!-- V3 — Mobile directional buttons (visible on touch devices) -->
       <div id="mobileControls">
         <button id="btnLeft"  class="mobileBtn" aria-label="Move left">◀</button>
         <button id="btnRight" class="mobileBtn" aria-label="Move right">▶</button>
       </div>
+      <!-- US-27 — mobile editor entry (visible only on the start screen) -->
+      <button id="btnEditor" aria-label="Ouvrir l'éditeur de niveaux">✎ ÉDITEUR</button>
     </div>
 
     <script type="module" src="src/main.js"></script>

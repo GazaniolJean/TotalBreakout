@@ -769,7 +769,7 @@ Permettre aux joueurs de créer et partager leurs propres niveaux directement da
 ### Acceptance Criteria
 
 - AC-01 — La grille `BRICK_ROWS × BRICK_COLS` est rendue sur le canvas aux mêmes positions que les briques en jeu (`BRICK_OFFSET_X/Y`, `BRICK_WIDTH/HEIGHT`, `BRICK_GAP`), avec un quadrillage léger sur les cellules vides.
-- AC-02 — Un clic gauche sur une cellule vide y place une brique du type d'outil actif (US-29). Un clic sur une cellule occupée par le même type l'efface (toggle).
+- AC-02 — Un clic gauche sur une cellule vide y place une brique du type d'outil actif. Un clic sur une cellule occupée par le même type l'efface (toggle). _Tant qu'US-29 (palette) n'est pas livrée, l'outil actif est figé au type par défaut `'N'` (Normale) défini dans `state.editor.toolType` (US-27) ; US-29 le rend sélectionnable._
 - AC-03 — Le glisser-déposer (clic maintenu + déplacement) peint en continu sur les cellules survolées, sans repasser deux fois sur la même cellule dans un même geste.
 - AC-04 — La cellule survolée par la souris est mise en évidence (contour) avec un aperçu translucide de la brique qui serait posée.
 - AC-05 — Le support tactile permet de peindre au doigt (tap + glissé), avec `touch-action: none` pour éviter le scroll.
@@ -806,6 +806,7 @@ Permettre aux joueurs de créer et partager leurs propres niveaux directement da
 
 ### Notes design
 - La couleur d'une brique en jeu dépend de sa **rangée** (`ROW_COLORS[r]`), pas de son type. Dans l'éditeur, conserver ce comportement : le type définit l'icône/marqueur, la rangée définit la couleur.
+- **Répartition rendu** : la **grille** est dessinée sur le `<canvas>` (US-28), mais la **palette** d'outils est en **DOM/CSS** (boutons HTML), pas sur le canvas — cohérent avec le HUD/bandeau d'édition existants (US-27) et nettement plus simple pour le tactile et l'accessibilité (`@media (pointer: coarse)`, focus clavier).
 
 ---
 
@@ -836,7 +837,7 @@ Permettre aux joueurs de créer et partager leurs propres niveaux directement da
 
 **En tant que** créateur, **je veux** jouer mon niveau en un clic **afin de** vérifier qu'il est amusant avant de le sauvegarder.
 
-**Dépendances :** US-28, US-24
+**Dépendances :** US-28, US-24, US-30 _(le bouton Tester n'est actif que si la grille est valide — voir AC-01)_
 
 ### Acceptance Criteria
 
@@ -919,7 +920,7 @@ Permettre aux joueurs de créer et partager leurs propres niveaux directement da
 - AC-02 — La partie réutilise toute la boucle de jeu existante : balle, raquette, power-ups, multiplicateurs de score, vies.
 - AC-03 — Le niveau custom est un **niveau unique** (pas de progression multi-niveaux US-24) : la victoire affiche `YOU WIN !`, le game over affiche `GAME OVER`, puis retour à la bibliothèque.
 - AC-04 — Le HUD affiche le nom du niveau custom à la place de `LV N`.
-- AC-05 — Le high score officiel n'est pas impacté par les parties sur niveaux custom (leaderboard séparé ou désactivé pour le custom — à trancher au design).
+- AC-05 — **Décision produit** : le leaderboard officiel (`breakout_highscores`) est **désactivé** pour les parties sur niveaux custom — aucune entrée n'y est écrite, l'écran de saisie des initiales ne s'affiche jamais. Cela garde la crédibilité des scores officiels. Un leaderboard local par niveau custom reste un candidat d'évolution, **hors scope** de cette story.
 - AC-06 — Si le niveau a été supprimé entre-temps, un message d'erreur renvoie à la bibliothèque sans planter.
 
 ### Hors scope

@@ -752,3 +752,59 @@ describe('advanceParticles - US-25', () => {
     expect(GameCore.advanceParticles([], 1, 16, 0.92)).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// US-27 — Level editor: empty grid + editor sub-state
+// ---------------------------------------------------------------------------
+describe('createEmptyEditorGrid — US-27', () => {
+  test('AC-03: returns a rows x cols grid', () => {
+    const grid = GameCore.createEmptyEditorGrid(5, 10);
+    expect(grid.length).toBe(5);
+    expect(grid.every(row => row.length === 10)).toBe(true);
+  });
+
+  test('AC-04: every cell starts empty (null)', () => {
+    const grid = GameCore.createEmptyEditorGrid(5, 10);
+    expect(grid.every(row => row.every(cell => cell === null))).toBe(true);
+  });
+
+  test('rows are independent — no shared reference', () => {
+    const grid = GameCore.createEmptyEditorGrid(3, 4);
+    grid[0][0] = 'N';
+    expect(grid[1][0]).toBe(null);
+    expect(grid[2][0]).toBe(null);
+  });
+
+  test('supports arbitrary dimensions', () => {
+    const grid = GameCore.createEmptyEditorGrid(2, 7);
+    expect(grid.length).toBe(2);
+    expect(grid[0].length).toBe(7);
+  });
+});
+
+describe('createEditorState — US-27', () => {
+  test('AC-03: exposes exactly grid / toolType / levelName / dirty', () => {
+    const ed = GameCore.createEditorState(5, 10);
+    expect(Object.keys(ed).sort()).toEqual(['dirty', 'grid', 'levelName', 'toolType']);
+  });
+
+  test('AC-04: grid is initialised empty at the given dimensions', () => {
+    const ed = GameCore.createEditorState(5, 10);
+    expect(ed.grid.length).toBe(5);
+    expect(ed.grid[0].length).toBe(10);
+    expect(ed.grid.every(row => row.every(cell => cell === null))).toBe(true);
+  });
+
+  test('defaults: Normale tool, "Sans titre" name, not dirty', () => {
+    const ed = GameCore.createEditorState(5, 10);
+    expect(ed.toolType).toBe('N');
+    expect(ed.levelName).toBe('Sans titre');
+    expect(ed.dirty).toBe(false);
+  });
+
+  test('produced grid is consumable by buildLevelGrid (empty layout -> all dead)', () => {
+    const ed = GameCore.createEditorState(5, 10);
+    const { bricks } = GameCore.buildLevelGrid({ layout: ed.grid });
+    expect(bricks.every(row => row.every(alive => alive === false))).toBe(true);
+  });
+});

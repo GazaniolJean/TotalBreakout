@@ -37,7 +37,7 @@ function handleHsInputKey(key, confirmCallback) {
 
 export const keys = {};
 
-export function initInput(canvas, { resetGame, releaseStickyBall, confirmHsEntry, closeHsView }) {
+export function initInput(canvas, { resetGame, releaseStickyBall, confirmHsEntry, closeHsView, openEditor, requestCloseEditor }) {
     function releaseAllStuckBalls() {
         state.balls.forEach(ball => { if (ball.stuck) releaseStickyBall(ball); });
     }
@@ -56,6 +56,16 @@ export function initInput(canvas, { resetGame, releaseStickyBall, confirmHsEntry
             return;
         }
 
+        // US-27 — editor owns its own keys; Escape / M exits (AC-05).
+        // Grid painting & palette shortcuts are added in US-28 / US-29.
+        if (state.gameState === 'editor') {
+            if (e.key === 'Escape' || e.key === 'm' || e.key === 'M') {
+                requestCloseEditor();
+            }
+            e.preventDefault();
+            return;
+        }
+
         keys[e.key.toLowerCase()] = true;
         if (state.balls.some(b => b.stuck) && state.gameState === 'playing') {
             releaseAllStuckBalls();
@@ -66,6 +76,10 @@ export function initInput(canvas, { resetGame, releaseStickyBall, confirmHsEntry
                 state.hsFromStartScreen = true;
                 state.hsNewEntryRank    = -1;
                 state.gameState = 'highscore_view';
+                return;
+            }
+            if (e.key === 'e' || e.key === 'E') { // US-27 AC-02
+                openEditor();
                 return;
             }
             if (!e.key.startsWith('F') && e.key !== 'Dead') {
@@ -125,6 +139,17 @@ export function initInput(canvas, { resetGame, releaseStickyBall, confirmHsEntry
         touchStartX  = 0;
         paddleStartX = 0;
     });
+
+    // US-27 AC-02 — mobile ÉDITEUR button (visible only on the start screen via CSS)
+    const btnEditor = document.getElementById('btnEditor');
+    if (btnEditor) {
+        ['mousedown', 'touchstart'].forEach(evtName => {
+            btnEditor.addEventListener(evtName, (e) => {
+                e.preventDefault();
+                if (state.gameState === 'start') openEditor();
+            }, { passive: false });
+        });
+    }
 
     const btnLeft  = document.getElementById('btnLeft');
     const btnRight = document.getElementById('btnRight');
